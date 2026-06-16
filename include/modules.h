@@ -28,19 +28,18 @@ struct RMSNorm {
 };
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L123
-template <typename T>
 struct Attention {
-    Tensor<T> q_proj;
-    Tensor<T> k_proj;
-    Tensor<T> v_proj;
-    Tensor<T> o_proj;
+    Tensor<float> q_proj;
+    Tensor<float> k_proj;
+    Tensor<float> v_proj;
+    Tensor<float> o_proj;
 
     size_t layer;
 
-    Attention(const Tensor<T>& q_proj,
-              const Tensor<T>& k_proj,
-              const Tensor<T>& v_proj,
-              const Tensor<T>& o_proj,
+    Attention(const Tensor<float>& q_proj,
+              const Tensor<float>& k_proj,
+              const Tensor<float>& v_proj,
+              const Tensor<float>& o_proj,
               size_t layer)
             : q_proj(q_proj),
               k_proj(k_proj),
@@ -66,13 +65,13 @@ struct MLP {
 
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L206
-template <typename T>
+template <typename TMlp>
 struct Layer {
     int i;
     RMSNorm input_norm;
     RMSNorm output_norm;
-    Attention<T> attn;
-    MLP<T> mlp;
+    Attention attn;
+    MLP<TMlp> mlp;
 
     Layer(int i, std::shared_ptr<Parameters> p) :
                                 i(i),
@@ -80,14 +79,14 @@ struct Layer {
                                 input_norm(p->get_tensor<float>(i, "input_layernorm.weight")),
                                 output_norm(p->get_tensor<float>(i, "post_attention_layernorm.weight")),
 
-                                attn(p->get_tensor<T>(i, "self_attn.q_proj.weight"),
-                                     p->get_tensor<T>(i, "self_attn.k_proj.weight"),
-                                     p->get_tensor<T>(i, "self_attn.v_proj.weight"),
-                                     p->get_tensor<T>(i, "self_attn.o_proj.weight"), i),
+                                attn(p->get_tensor<float>(i, "self_attn.q_proj.weight"),
+                                     p->get_tensor<float>(i, "self_attn.k_proj.weight"),
+                                     p->get_tensor<float>(i, "self_attn.v_proj.weight"),
+                                     p->get_tensor<float>(i, "self_attn.o_proj.weight"), i),
 
-                                mlp(p->get_tensor<T>(i, "mlp.down_proj.weight"),
-                                    p->get_tensor<T>(i, "mlp.gate_proj.weight"),
-                                    p->get_tensor<T>(i, "mlp.up_proj.weight"))
+                                mlp(p->get_tensor<TMlp>(i, "mlp.down_proj.weight"),
+                                    p->get_tensor<TMlp>(i, "mlp.gate_proj.weight"),
+                                    p->get_tensor<TMlp>(i, "mlp.up_proj.weight"))
                                 {}
 
 
@@ -106,12 +105,12 @@ struct LMHead {
 
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L334
-template <typename T>
+template <typename TMlp>
 struct Model {
     Embedding embedding;
     RMSNorm norm;
     LMHead lmHead;
-    std::vector<Layer<T>> layers;
+    std::vector<Layer<TMlp>> layers;
 
     Model(std::shared_ptr<Parameters> params) : embedding(params->get_tensor<float>(-1, "model.embed_tokens.weight")), norm(params->get_tensor<float>(-1, "model.norm.weight")), lmHead(params){
         for (int i=0;i<params->config.n_layers; i++){

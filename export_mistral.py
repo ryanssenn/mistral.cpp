@@ -9,17 +9,18 @@ import argparse
 
 """
 Usage:
-  python export_mistral.py --model_dir /path/to/Mistral-7B-v0.1 [--out model.bin] [--quant int8]
+  python export_mistral.py --model_dir /path/to/Mistral-7B-v0.1 [--out model.bin] [--quant f32]
 
 Arguments:
   --model_dir   Required. Path to the Hugging Face model directory.
   --out         Optional. Output file path. Defaults to ./model.bin
-  --quant       Optional. Quantization mode. Defaults to f32. Accepts f32 or int8
+  --quant       Optional. Quantization mode. Defaults to int8. Accepts f32 or int8.
+                int8 quantizes MLP projections only; attention stays f32.
   
 
-python export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ../mistral.bin --quant f32
+python export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ../mistral.bin
 
-python export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ../mistral-int8.bin --quant int8
+python export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ../mistral.bin --quant f32
 
 ---------
 
@@ -104,6 +105,12 @@ def pad_to_64(offset):
 
     return 64 - r
 
+def should_quantize(tensor_name):
+    # MLP projections quantize well; attention int8 error is too large for coherent generation.
+    return args.quant != "f32" and any(
+        key in tensor_name for key in ("mlp.gate_proj", "mlp.up_proj", "mlp.down_proj")
+    )
+
 def load_tensor_map(header):
     # Loop through each tensor and add info to header["tensors"]
     header["tensors"] = {}
@@ -116,7 +123,7 @@ def load_tensor_map(header):
             tensor = f.get_tensor(tensor_name)
 
             # Quantize
-            if "_proj" in tensor_name and args.quant != "f32":
+            if should_quantize(tensor_name):
                 header["tensors"][tensor_name] = {"dtype": args.quant, "shape": list(tensor.shape)[:4], "offset": start}
                 start += tensor.numel() * DATA_SIZE
                 start += pad_to_64(start)
@@ -184,7 +191,7 @@ def write_binary(header):
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_dir", required=True)
 parser.add_argument("--out", default="./model.bin")
-parser.add_argument("--quant", default="f32", choices=["f32", "int8"])
+parser.add_argument("--quant", default="int8", choices=["f32", "int8"])
 args = parser.parse_args()
 
 IN_PATH = args.model_dir

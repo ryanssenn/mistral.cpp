@@ -43,9 +43,9 @@ pip install -r requirements.txt
 
 The app and tests read quantization mode from the binary header, so export the format you want. Both paths write to `./mistral.bin` in the repo root (re-export to switch formats).
 
-**Option A - f32 (default, full parity tests)**
+**Default - int8 (smaller, faster inference)**
 
-Full-precision weights (~27 GB). Best for validating correctness against Hugging Face. Runs 19 parity tests.
+Per-group symmetric int8 quantization on MLP projection weights (~16 GB). Attention projections, embeddings, norms, and `lm_head` stay f32. Faster on CPU than full f32, with much better output quality than quantizing attention.
 
 ```bash
 python3 export_mistral.py \
@@ -53,15 +53,15 @@ python3 export_mistral.py \
   --out ./mistral.bin
 ```
 
-**Option B - int8 (smaller, faster inference)**
+**Option - f32 (full parity tests)**
 
-Per-group symmetric int8 quantization on projection weights (~8 GB). Embeddings, norms, and `lm_head` stay f32. Faster on CPU, but only 5 parity tests run and int8 attention tests are not enabled yet.
+Full-precision weights (~27 GB). Best for validating correctness against Hugging Face. Runs 19 parity tests.
 
 ```bash
 python3 export_mistral.py \
   --model_dir ../Mistral-7B-v0.1 \
   --out ./mistral.bin \
-  --quant int8
+  --quant f32
 ```
 
 Expected result (either option):
@@ -98,7 +98,7 @@ The program prints up to 50 generated tokens and then a throughput line like:
 throughput: <number> tok/s
 ```
 
-int8 is much faster on CPU than f32. f32 is mainly useful for correctness checks; int8 is better for day-to-day generation.
+The default int8 export is much faster on CPU than f32. Use f32 mainly for correctness checks.
 
 # Testing
 
@@ -115,7 +115,20 @@ cmake --build build --target test_exec
 ./build/test_exec
 ```
 
-Tests are filtered by the quantization mode in `mistral.bin`. Golden values in `test/mistral/expected.txt` come from Hugging Face f32 weights; int8 tests cover load, MLP, and tokenizer only.
+Tests are filtered by the quantization mode in `mistral.bin`. With the default int8 export, tests cover load, MLP, and tokenizer only. Golden values in `test/mistral/expected.txt` come from Hugging Face f32 weights; re-export with `--quant f32` to run the full 19-test suite.
+
+**Expected result (default int8 export):**
+
+```text
+Running tests for model type: int8
+Running load config
+Running load weights
+Running test attention feedforward mlp
+Running tokenizer encode
+Running tokenizer encode fallback
+
+Summary : 5 / 5 tests passed
+```
 
 **Expected result (f32 export):**
 
@@ -142,19 +155,6 @@ Running tokenizer encode fallback
 Running tokenizer decode
 
 Summary : 19 / 19 tests passed
-```
-
-**Expected result (int8 export):**
-
-```text
-Running tests for model type: int8
-Running load config
-Running load weights
-Running test attention feedforward mlp
-Running tokenizer encode
-Running tokenizer encode fallback
-
-Summary : 5 / 5 tests passed
 ```
 
 If you see this:

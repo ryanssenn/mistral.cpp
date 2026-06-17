@@ -1,10 +1,12 @@
 # mistral.cpp
 
-From-scratch C++ implementation of [Mistral 7B](https://huggingface.co/mistralai/Mistral-7B-v0.1) for CPU inference. Implements custom tensor operations, a quantized weight loader, BPE tokenization, KV caching, and the full decoder architecture for local text generation.
+From-scratch C++ implementation of [Mistral 7B](https://huggingface.co/mistralai/Mistral-7B-v0.1) base model for CPU inference.
 
-Educational project for understanding LLM inference, not a production inference engine.
+Everything up to the first usable int8 generation path was built by hand: loading the model, running the tokenizer, executing the decoder, generating text, and validating against Hugging Face. After that point, AI tools, mostly Cursor Agent, began helping with debugging, refactors, docs, tests, and performance.
 
-Current status: int8 inference runs at ~4.6 tok/s on an Apple M4 with greedy decoding (--temp 0). The quantized path still exhibits numerical drift, and only the base Mistral 7B model is currently supported, so output quality, long generations, and instruction following remain a work in progress.
+Educational project for understanding LLM inference, not a production engine.
+
+Current status: int8 runs at ~4.9 tok/s on Apple M4; quality is still WIP due to numerical drift.
 
 Independent project, not affiliated with Mistral AI.
 

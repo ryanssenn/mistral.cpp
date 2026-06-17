@@ -54,8 +54,9 @@ Output:
 def quantize(x: torch.Tensor, n_bits: int, group_size: int):
     assert (x.numel() % group_size == 0)
 
-    # Split tensor in groups
-    x = x.reshape(-1, group_size)
+    # Split tensor in groups. Compute in fp32: bf16 weights lose precision and
+    # make max * (int_max / max) overshoot int_max, rounding up to int_max + 1.
+    x = x.reshape(-1, group_size).float()
 
     # Max int range
     int_max = 2 ** (n_bits - 1) - 1
@@ -63,8 +64,9 @@ def quantize(x: torch.Tensor, n_bits: int, group_size: int):
     # Compute scale for each group
     scales = int_max / x.abs().max(dim=-1).values.unsqueeze(-1)
 
-    # Quantize
-    quant = (x * scales).round()
+    # Quantize. Clamp to [-int_max, int_max] so a rounded int_max + 1 can't wrap
+    # to the negative extreme when cast to int8 (e.g. 128 -> -128, flipping sign).
+    quant = (x * scales).round().clamp(-int_max, int_max)
 
     return quant, scales
 

@@ -1,31 +1,19 @@
 # mistral.cpp
 
-From-scratch C++ implementation of Mistral 7B for CPU inference.
+A from-scratch C++ implementation of Mistral 7B inference on CPU. The core was hand-written through the first successful forward pass; agents were then used to accelerate the rest. Validated against Hugging Face reference outputs, with f32 and int8 paths.
 
-The goal of this project is to understand how modern LLM inference works by building the major pieces directly: model loading, tokenization, transformer execution, KV caching, quantization, and text generation.
+Measured on an AWS Linux instance (16 vCPU Intel Xeon Platinum 8488C, 32 GiB RAM):
 
-Current features:
+| | int8 | HF reference |
+|---|---|---|
+| Throughput | ~2.6 tok/s | — |
+| Perplexity | ~33 | ~5 |
 
-* Mistral 7B weight loading
-* SentencePiece tokenization
-* Rotary positional embeddings (RoPE)
-* RMSNorm
-* Grouped-query attention
-* KV cache
-* Greedy and temperature-based sampling
-* Export pipeline from Hugging Face weights
-* Float32 and int8 inference paths
-* Validation against Hugging Face reference outputs
-
-This is an educational project focused on correctness and understanding rather than production deployment.
-
-Independent project, not affiliated with Mistral AI.
-
-<br>
-
-![demo2](https://github.com/user-attachments/assets/1711dc3e-9ab2-4f73-8c35-b7ac3aabec55)
+An educational project: compact code you can read through, not a production engine. Not affiliated with Mistral AI.
 
 # Running
+
+Only validated on macOS and Linux.
 
 | | Minimum |
 |---|---|
@@ -127,108 +115,42 @@ The default int8 export is much faster on CPU than f32. Use f32 mainly for corre
 
 # Testing
 
-The implementation is validated against Hugging Face reference outputs at multiple levels, including tokenizer behavior, CPU kernels, decoder modules, hidden states, and logits.
+The primary quality metric is perplexity on a fixed prompt (lower is better); the int8 engine's perplexity should fall toward the Hugging Face reference as numerical bugs are fixed. `perplexity.sh` runs both on the same prompt and compares against a saved baseline so regressions are visible:
 
-Reference tensors are generated from the Hugging Face Mistral implementation and compared against the corresponding C++ outputs. The test suite supports both f32 and int8 model exports.
-Run the tests from the repo root after creating `./mistral.bin`:
+```bash
+./perplexity.sh                 # int8 engine PPL + cached HF reference + delta vs baseline
+./perplexity.sh --hf            # also recompute the HF reference (slow; loads the 7B model)
+./perplexity.sh --save          # record current numbers as the new baseline after an improvement
+./perplexity.sh "your own prompt"
+```
+
+Example:
+
+```text
+====================================================
+  perplexity            prompt sha: 1854ad2a801c
+====================================================
+  HF reference        5.2414
+  int8 engine         32.9683
+  gap (int8 - HF)     27.7269
+  vs baseline int8    32.9683  (+0.0000, unchanged)
+====================================================
+```
+
+The HF reference defaults to fp32; on memory-constrained machines set `PPL_DTYPE=bfloat16` (Mistral's native dtype) to avoid loading a ~28 GB f32 copy. The engine on its own (no Hugging Face) is just `./build/mistral.cpp ./mistral.bin "<prompt>" --ppl`.
+
+## Component tests
+
+Lower-level correctness is covered by a unit suite that validates tokenizer behavior, CPU kernels, decoder modules, hidden states, and logits against Hugging Face reference tensors, for both f32 and int8 exports. Build and run from the repo root after creating `./mistral.bin`:
 
 ```bash
 cmake --build build --target test_exec
 ./build/test_exec
 ```
 
-**Expected result (default int8 export)** — the logits diagnostic fails on int8:
+The f32 export runs 21 parity tests; int8 runs 7. The int8 `test logits multi top10` diagnostic is expected to fail (it flags int8 top-1 token flips against the f32 golden) — the perplexity workflow above is the better measure of overall int8 quality.
 
-```text
-====================================================
-  mistral.cpp · test suite            model: int8
-====================================================
-
-  ✗  test logits multi top10           17287.3 ms
-          [paris] step 0 top1 f32=4843 int8=4843 | top1=OK  top10_overlap=7/10
-          [paris] step 5 top1 f32=9504 int8=9504 | top1=OK  top10_overlap=3/10
-          [sky] step 1 top1 f32=4672 int8=3534 | top1=FLIP top10_overlap=5/10
-          [sky] step 3 top1 f32=28723 int8=28725 | top1=FLIP top10_overlap=5/10
-          [sky] step 4 top1 f32=415 int8=13 | top1=FLIP top10_overlap=7/10
-          [sky] step 5 top1 f32=4376 int8=3181 | top1=FLIP top10_overlap=3/10
-  ✓  test layer stack prefill              0.0 ms
-  ✓  load config                           0.0 ms
-  ✓  load weights                          0.3 ms
-  ✓  test attention feedforward mlp        4.8 ms
-  ✓  tokenizer encode                      0.5 ms
-  ✓  tokenizer encode fallback             0.0 ms
-
-----------------------------------------------------
-  FAILED   6 / 7        1 failed        17293.0 ms
-====================================================
-```
-
-**Expected result (f32 export):**
-
-```text
-====================================================
-  mistral.cpp · test suite             model: f32
-====================================================
-
-  ✗  test logits multi top10           17000.0 ms
-  ✓  test layer stack prefill              0.0 ms
-  ✓  test rope                             0.0 ms
-  ✓  test matmul                           0.0 ms
-  ✓  test row matmul                       0.0 ms
-  ✓  test softmax                          0.0 ms
-  ✓  test silu                             0.0 ms
-  ✓  load config                           0.0 ms
-  ✓  load weights                         22.9 ms
-  ✓  test layer                           45.1 ms
-  ✓  test attention                        2.1 ms
-  ✓  test attention feedforward mlp       48.7 ms
-  ✓  test kv cache                         1.4 ms
-  ✓  test embedding                        0.1 ms
-  ✓  test rotary embedding inv freq        0.0 ms
-  ✓  test rotary embedding                 0.0 ms
-  ✓  test rmsnorm                          0.1 ms
-  ✓  test lm head                          6.3 ms
-  ✓  tokenizer encode                      0.4 ms
-  ✓  tokenizer encode fallback             0.0 ms
-  ✓  tokenizer decode                      0.0 ms
-
-----------------------------------------------------
-  FAILED   20 / 21        1 failed        198.4 ms
-====================================================
-```
-
-If you see this:
-
-```text
-Model binary open failed
-```
-
-then `./mistral.bin` does not exist at the repo root. Run the export command in step 3, or copy the exported model binary to `./mistral.bin`.
-
-# Numerical drift (int8)
-
-The int8 engine is much less accurate than the HuggingFace fp32 reference, and the error grows with context length (`scripts/perplexity.py` scores the engine against HF fp32, bucketed by position):
-
-| Token positions | int8 engine perplexity | HF fp32 |
-| --------------- | ---------------------- | ------- |
-| 0–16    | ~32 | ~3.7 |
-| 32–64   | ~54 | ~3.7 |
-| 160–192 | ~90 | ~3.7 |
-
-Only the MLP gate/up projections are quantized (per-group symmetric int8, group size 64), so the weight format is a small perturbation. The likely dominant cause is the int8 compute path (matmul accumulation, dequant, KV cache feedback) compounding per-token error.
-
-### Solutions
-
-1. Accumulate int8 matmuls in int32, scale once.
-2. Add a kernel test comparing int8 matmul vs f32 matmul of the dequantized weights.
-3. Bisect by layer with `DUMP_LAYER_STACK=1` goldens.
-4. Confirm KV cache is f32.
-5. Try per-token activation scaling.
-
-# Roadmap
-
-Full progress tracker: [ROADMAP.md](ROADMAP.md). Still todo: terminal chat interface, fp8, SIMD, CUDA.
-
+If you see `Model binary open failed`, then `./mistral.bin` does not exist at the repo root — run the export in step 3.
 
 # Resources
 

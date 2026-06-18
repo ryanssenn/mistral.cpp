@@ -89,6 +89,7 @@ uint32_t generate(
 template <typename T>
 void run_inference(std::shared_ptr<Parameters> params, InferenceState& infer, const std::vector<uint32_t>& got, float temp) {
     Model<T> model(params);
+    RotaryEmbedding::init_freq(infer, params->config);
 
     for (int i=0; i<(int)got.size()-1; i++){
         model.forward(infer, got[i]);
@@ -131,6 +132,7 @@ void run_inference(std::shared_ptr<Parameters> params, InferenceState& infer, co
 template <typename T>
 void run_perplexity(std::shared_ptr<Parameters> params, InferenceState& infer, const std::vector<uint32_t>& tokens) {
     Model<T> model(params);
+    RotaryEmbedding::init_freq(infer, params->config);
     infer.pos = 0;
 
     size_t vocab = params->config.vocab_size;

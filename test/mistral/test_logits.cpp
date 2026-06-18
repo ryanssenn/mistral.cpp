@@ -52,6 +52,7 @@ static int run_logits_prompt(const std::string& prefix) {
     }
 
     std::vector<uint32_t> tokens = params->tokenizer.encode(it->second);
+    RotaryEmbedding::init_freq(infer, params->config);
     infer.pos = 0;
 
     for (size_t i = 0; i + 1 < tokens.size(); i++) {
@@ -132,6 +133,7 @@ static int run_layer_stack_prompt(const std::string& prefix) {
     }
 
     std::vector<uint32_t> tokens = params->tokenizer.encode(it->second);
+    RotaryEmbedding::init_freq(infer, params->config);
     infer.pos = 0;
 
     for (size_t i = 0; i + 1 < tokens.size(); i++) {

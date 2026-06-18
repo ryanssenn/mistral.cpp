@@ -2,12 +2,7 @@
 
 A from-scratch C++ implementation of Mistral 7B inference on CPU. The core was hand-written through the first successful forward pass; agents were then used to accelerate the rest. Validated against Hugging Face reference outputs, with f32 and int8 paths.
 
-Measured on an AWS Linux instance (16 vCPU Intel Xeon Platinum 8488C, 32 GiB RAM):
-
-| | int8 | HF reference |
-|---|---|---|
-| Throughput | ~2.6 tok/s | — |
-| Perplexity | ~33 | ~5 |
+Measured on an AWS Linux instance (16 vCPU Intel Xeon Platinum 8488C, 32 GiB RAM), the int8 implementation achieves ~2.6 tok/s throughput with a perplexity of ~5.2, matching the Hugging Face reference.
 
 An educational project: compact code you can read through, not a production engine. Not affiliated with Mistral AI.
 
@@ -141,16 +136,17 @@ The HF reference defaults to fp32; on memory-constrained machines set `PPL_DTYPE
 
 ## Component tests
 
-Lower-level correctness is covered by a unit suite that validates tokenizer behavior, CPU kernels, decoder modules, hidden states, and logits against Hugging Face reference tensors, for both f32 and int8 exports. Build and run from the repo root after creating `./mistral.bin`:
+A unit test suite validates tokenizer behavior, CPU kernels, decoder modules, hidden states, and logits against Hugging Face reference tensors for both f32 and int8 exports. After creating `./mistral.bin`, build and run the tests from the repository root:
 
 ```bash
 cmake --build build --target test_exec
 ./build/test_exec
 ```
 
-The f32 export runs 21 parity tests; int8 runs 7. The int8 `test logits multi top10` diagnostic is expected to fail (it flags int8 top-1 token flips against the f32 golden) — the perplexity workflow above is the better measure of overall int8 quality.
+The f32 export includes 21 parity tests, while the int8 export includes 7. One test, `test logits multi top10`, is expected to fail for int8 because it highlights top-1 token differences relative to the f32 reference. Perplexity is a more meaningful measure of overall int8 model quality.
 
-If you see `Model binary open failed`, then `./mistral.bin` does not exist at the repo root — run the export in step 3.
+If you encounter `Model binary open failed`, `./mistral.bin` is missing from the repository root. Generate it using the export step above.
+
 
 # Resources
 

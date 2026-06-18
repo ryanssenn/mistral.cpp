@@ -1,6 +1,6 @@
 # mistral.cpp
 
-A from-scratch C++ implementation of Mistral 7B inference on CPU. The core was hand-written through the first successful forward pass; agents were then used to accelerate the rest. Validated against Hugging Face reference outputs, with f32 and int8 paths.
+A from-scratch C++ implementation of Mistral 7B inference on CPU. The core was built by hand through the first end-to-end forward pass: weight loading, BPE tokenization, the full decoder (attention, MLP, KV cache), and greedy text generation. After that, Cursor agents helped with int8 quantization, CPU performance (OpenMP and SIMD), perplexity regression tooling, and bug fixes. Validated against Hugging Face reference outputs, with f32 and int8 paths.
 
 <img width="1200" height="331" alt="mistral_demo" src="https://github.com/user-attachments/assets/2660a8e4-c444-44da-8e19-bd70ea76449a" />
 

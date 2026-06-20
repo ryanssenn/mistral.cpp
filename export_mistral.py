@@ -11,6 +11,7 @@ Usage:
   python export_mistral.py --model_dir /path/to/Mistral-7B-v0.1 [--out mistral.mog] [--quant f32]
 
 Converts a Hugging Face Mistral checkpoint into a single .mog file.
+Default (--quant Q8F16): int8 gate/up, f16 for all other weights.
 """
 
 MAGIC = b"MOG\x00"
@@ -22,6 +23,13 @@ KV_FLOAT32 = 2
 
 DTYPE_F32 = 0
 DTYPE_INT8 = 1
+DTYPE_F16 = 2
+
+DTYPE_BYTES = {
+    DTYPE_F32: 4,
+    DTYPE_INT8: 1,
+    DTYPE_F16: 2,
+}
 
 
 def write_u8(buf, v):
@@ -83,7 +91,6 @@ def should_quantize(quant_mode, tensor_name):
         key in tensor_name for key in ("mlp.gate_proj", "mlp.up_proj")
     )
 
-
 def load_config(model_dir, quant_mode):
     with open(os.path.join(model_dir, "config.json")) as fh:
         cfg = json.load(fh)
@@ -132,14 +139,15 @@ def load_tensor_map(model_dir, weight_map, quant_mode, data_size, group_size):
                 start += scale_size * 4
                 start += pad_to_64(start)
             else:
+                dtype = DTYPE_F32 if quant_mode == "f32" else DTYPE_F16
                 tensors[tensor_name] = {
-                    "dtype": DTYPE_F32,
+                    "dtype": dtype,
                     "shape": list(tensor.shape)[:4],
                     "offset": start,
                     "scale_offset": 0,
                     "scale_size": 0,
                 }
-                start += tensor.numel() * 4
+                start += tensor.numel() * DTYPE_BYTES[dtype]
                 start += pad_to_64(start)
 
     return tensors, start
@@ -213,8 +221,10 @@ def write_binary(model_dir, out_path, weight_map, tensors, header_blob, quant_mo
                     tensor, scales = quantize(tensor, data_size * 8, group_size)
                     tensor = tensor.to(data_type)
                     scales = scales.to(torch.float32)
-                else:
+                elif quant_mode == "f32":
                     tensor = tensor.to(torch.float32)
+                else:
+                    tensor = tensor.to(torch.float16)
 
                 write_tensor(out, tensor, base_offset, tensors[tensor_name]["offset"])
                 if scales is not None:
@@ -224,7 +234,7 @@ def write_binary(model_dir, out_path, weight_map, tensors, header_blob, quant_mo
 
     expected_payload = max(
         info["offset"] + (
-            int(torch.prod(torch.tensor(info["shape"])).item()) * (1 if info["dtype"] == DTYPE_INT8 else 4)
+            int(torch.prod(torch.tensor(info["shape"])).item()) * DTYPE_BYTES[info["dtype"]]
         )
         for info in tensors.values()
     )
@@ -236,11 +246,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_dir", required=True)
     parser.add_argument("--out", default="./mistral.mog")
-    parser.add_argument("--quant", default="int8", choices=["f32", "int8"])
+    parser.add_argument("--quant", default="Q8F16", choices=["f32", "Q8F16"])
     args = parser.parse_args()
 
-    data_size = 1 if args.quant == "int8" else 4
-    data_type = torch.int8 if args.quant == "int8" else torch.float32
+    data_size = 1 if args.quant != "f32" else 4
+    data_type = torch.int8 if args.quant != "f32" else torch.float32
     group_size = 64
 
     with open(os.path.join(args.model_dir, "model.safetensors.index.json")) as fh:

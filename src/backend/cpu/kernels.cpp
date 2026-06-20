@@ -80,6 +80,33 @@ static float dot_i8_f32(const int8_t* w, const float* x, size_t n) {
 #endif
 }
 
+static float dot_f16_f32(const fp16_t* w, const float* x, size_t n) {
+#if defined(__ARM_NEON)
+    float32x4_t acc = vdupq_n_f32(0.f);
+    size_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        float16x8_t wh = vld1q_f16(reinterpret_cast<const __fp16*>(w + i));
+        float32x4_t wf_lo = vcvt_f32_f16(vget_low_f16(wh));
+        float32x4_t wf_hi = vcvt_f32_f16(vget_high_f16(wh));
+        float32x4_t xf_lo = vld1q_f32(x + i);
+        float32x4_t xf_hi = vld1q_f32(x + i + 4);
+        acc = vfmaq_f32(acc, wf_lo, xf_lo);
+        acc = vfmaq_f32(acc, wf_hi, xf_hi);
+    }
+    float result = vaddvq_f32(acc);
+    for (; i < n; i++) {
+        result += fp16_to_f32(w[i]) * x[i];
+    }
+    return result;
+#else
+    float result = 0.f;
+    for (size_t i = 0; i < n; i++) {
+        result += fp16_to_f32(w[i]) * x[i];
+    }
+    return result;
+#endif
+}
+
 
 // W (n,d) @ x (d,) = xout (n,)
 void matmul(Tensor<float>& xout, Tensor<float>& w, Tensor<float>& x){
@@ -127,6 +154,18 @@ void matmul(Tensor<float>& xout, Tensor<int8_t>& w, Tensor<float>& x){
         }
 
         xout.data[i] = sum;
+    }
+}
+
+void matmul(Tensor<float>& xout, Tensor<fp16_t>& w, Tensor<float>& x){
+    size_t n = w.shape[0];
+    size_t d = w.shape[1];
+
+    assert(x.numel == d && xout.numel >= n && "matmul shape mismatch");
+
+    #pragma omp parallel for
+    for (int i=0; i<(int)n; i++){
+        xout.data[i] = dot_f16_f32(w.data + i * d, x.data, d);
     }
 }
 

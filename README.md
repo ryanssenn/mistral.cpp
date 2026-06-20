@@ -6,11 +6,11 @@ Convert a Hugging Face model into a single .mog file and run it locally. No runt
 
 ## Supported models
 
-Benchmarks on M4 MacBook, int8 quantization.
+Benchmarks on M4 MacBook, Q8F16 (~10 GB).
 
 | Model | tok/s | perplexity |
 |-------|------:|-----------:|
-| [Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) | 4.36 | 5.24 |
+| [Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) | 5.73 | 5.24 |
 
 ## Run it
 
@@ -57,7 +57,3 @@ Perplexity is the main correctness check. `./perplexity.sh` runs the engine agai
 ./perplexity.sh
 ./build/test_exec
 ```
-
-## Docs
-
-[Architecture](docs/architecture.md) · [MOG format](docs/model-binary.md)

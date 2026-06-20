@@ -1,4 +1,5 @@
 #include "setup/context.h"
+#include "fp16.h"
 
 
 int test_rope(){
@@ -46,6 +47,27 @@ int test_matmul(){
 }
 
 RegisterTest matmul_reg("test matmul", "any", &test_matmul);
+
+int test_matmul_f16(){
+    fp16_t w_data[] = {
+        f32_to_fp16(1.0f), f32_to_fp16(2.0f), f32_to_fp16(3.0f), f32_to_fp16(4.0f), f32_to_fp16(5.0f), f32_to_fp16(6.0f),
+    };
+    Tensor<fp16_t> w(w_data, {2, 3});
+    Tensor<float> x(arena, {10, 20, 30}, {3});
+    Tensor<float> xout(arena, {0, 0}, {2});
+    Tensor<float> expected(arena, {140, 320}, {2});
+
+    matmul(xout, w, x);
+
+    if (!equals(xout, expected)){
+        std::cout << "matmul f16 mismatch" << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
+
+RegisterTest matmul_f16_reg("test matmul f16", "any", &test_matmul_f16);
 
 int test_row_matmul(){
     Tensor<float> w(arena, {1, 2,

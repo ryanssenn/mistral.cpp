@@ -1,4 +1,5 @@
 #include "tensor.h"
+#include "fp16.h"
 #include <cassert>
 #include <cstring>
 
@@ -85,15 +86,21 @@ Tensor<T> Tensor<T>::reshape(std::vector<size_t> new_shape) {
 }
 
 template<>
-float Tensor<float>::get(size_t i){
+float Tensor<float>::get(size_t i) const{
     return data[i];
 }
 
 template<>
-float Tensor<int8_t>::get(size_t i){
+float Tensor<int8_t>::get(size_t i) const{
     return data[i] / scales[scales.size() * i / numel];
+}
+
+template<>
+float Tensor<fp16_t>::get(size_t i) const{
+    return fp16_to_f32(data[i]);
 }
 
 
 template class Tensor<float>;
 template class Tensor<signed char>;
+template class Tensor<fp16_t>;

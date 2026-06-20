@@ -81,8 +81,10 @@ TopK get_topk(const Tensor<float>& logits, size_t k){
 }
 
 static float equals_atol(){
-    // f32 tests compare engine f32 vs HF f32; int8 tests compare int8 vs HF f32 goldens.
-    if (get_params()->config.quant == "int8") {
+    if (get_params()->config.quant == "f32") {
+        return 5e-2f;
+    }
+    if (is_q8f16(get_params()->config.quant)) {
         return 1.1e-1f; // worst pre-L31 layer ~0.106 (sky L29)
     }
     return 5e-2f;

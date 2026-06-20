@@ -1,9 +1,12 @@
 #include "modules.h"
 #include <iostream>
 
-// Assumes only 1 id
-void Embedding::forward(InferenceState& infer, size_t token_id){
-    infer.hidden_state.copy_from(table.at({token_id}));
+template <typename TLinear>
+void Embedding<TLinear>::forward(InferenceState& infer, size_t token_id){
+    Tensor<TLinear> row = table.at({token_id});
+    for (size_t i = 0; i < embedding_dim; i++) {
+        infer.hidden_state.data[i] = row.get(i);
+    }
 }
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L290
@@ -28,7 +31,8 @@ void RotaryEmbedding::forward(InferenceState& infer){
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L195
 // x*g / sqrt(sum(x^2) + e)
-void RMSNorm::forward(InferenceState& infer) {
+template <typename TLinear>
+void RMSNorm<TLinear>::forward(InferenceState& infer) {
     float squares = 0;
 
     for(int i =0; i<infer.hidden_state.numel; i++){
@@ -39,142 +43,112 @@ void RMSNorm::forward(InferenceState& infer) {
 
     mul(infer.hidden_state, infer.hidden_state,1/rms);
 
-    // Element wise mul with g
     for (int i=0; i<infer.hidden_state.numel; i++){
-        infer.hidden_state.data[i] = infer.hidden_state.data[i] * g.data[i];
+        infer.hidden_state.data[i] = infer.hidden_state.data[i] * g.get(i);
     }
 }
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L140
-void Attention::forward(InferenceState &infer) {
-    // Get q, k, v
-    // [proj, hidden_size] @ [hidden_size, 1] = [proj]
+template <typename TLinear>
+void Attention<TLinear>::forward(InferenceState &infer) {
     matmul(infer.q_state, q_proj, infer.hidden_state);
     matmul(infer.k_state, k_proj, infer.hidden_state);
     matmul(infer.v_state, v_proj, infer.hidden_state);
 
-    // Populate cos/sin embeddings
     RotaryEmbedding::forward(infer);
 
-    // Rotate Q,K
     rope(infer.q_state, infer.q_state, infer.cos, infer.sin);
     rope(infer.k_state, infer.k_state, infer.cos, infer.sin);
 
-    // Push KV to cache
     infer.push_kv(layer);
 
-    // Perform attention with tokens in window
-    // softmax ( QK^t / sqrt(head_dim) ) * V
-    // Reuse each KV head 4 times
     #pragma omp parallel for
     for (size_t h=0; h<infer.config.n_heads; h++){
-        // [seq_len, 128] @ [128]
-        Tensor q_head = infer.q_state.at({h}); // [128]
-        Tensor k_head = infer.k_cache.at({layer, h/4}).reshape({infer.pos+1, infer.config.head_dim}); // [seq_len, 128]
+        Tensor q_head = infer.q_state.at({h});
+        Tensor k_head = infer.k_cache.at({layer, h/4}).reshape({infer.pos+1, infer.config.head_dim});
         Tensor score_head = infer.scores.at({h}).reshape({infer.pos+1});
 
-        // KQ
         matmul(score_head, k_head, q_head);
-        // Divide by dk
         mul(score_head, score_head, 1/sqrt(infer.config.head_dim));
-        // Softmax
-        softmax(score_head, score_head); // [seq_len]
+        softmax(score_head, score_head);
 
-        Tensor v_head = infer.v_cache.at({layer, h/4}).reshape({infer.pos+1, infer.config.head_dim});  // [seq_len, 128]
+        Tensor v_head = infer.v_cache.at({layer, h/4}).reshape({infer.pos+1, infer.config.head_dim});
         Tensor context_head = infer.context.at({h});
 
-        // score_head [seq_len] @ v_head [seq_len, head_dim]
         row_matmul(context_head, score_head, v_head);
     }
 
-    // o_proj [4096, 4096] @ context [4096]
     matmul(infer.hidden_state, o_proj, infer.context);
 }
 
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L46
-// Mistral uses a SwiGLU feedforward block
-// It runs the input through two linear projections.
-// The first gives the main signal, the second goes through a silu activation
-// Then multiplies these two paths together and apply the final projection
-template <typename TGateUp>
-void MLP<TGateUp>::forward(InferenceState &infer) {
-    // gate_proj [14336, 4096] @ hidden_state [4096]
+template <typename TGateUp, typename TLinear>
+void MLP<TGateUp, TLinear>::forward(InferenceState &infer) {
     matmul(infer.mlp_gate, gate_proj, infer.hidden_state);
 
-    // Activation
     silu(infer.mlp_gate, infer.mlp_gate);
 
-    // up_proj [14336, 4096] @ hidden_state [4096]
     matmul(infer.mlp_up, up_proj, infer.hidden_state);
 
-    // Multiply
     mul(infer.mlp_gate, infer.mlp_gate, infer.mlp_up);
 
-    // down_proj [4096, 14336] @ [14336]
     matmul(infer.hidden_state, down_proj, infer.mlp_gate);
 }
 
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L215
-template <typename TMlp>
-void Layer<TMlp>::forward(InferenceState &infer){
-    // Copy input into residual
+template <typename TGateUp, typename TLinear>
+void Layer<TGateUp, TLinear>::forward(InferenceState &infer){
     infer.residual.copy_from(infer.hidden_state);
 
-    // Layer norm
     input_norm.forward(infer);
 
-    // Self attention
     attn.forward(infer);
 
-    // Add residual to hidden state
     add(infer.hidden_state, infer.hidden_state, infer.residual);
 
-    // Copy input into residual
     infer.residual.copy_from(infer.hidden_state);
 
-    // Layer norm
     output_norm.forward(infer);
 
-    // Feed forward
     mlp.forward(infer);
 
-    // Add residual
     add(infer.hidden_state, infer.hidden_state, infer.residual);
 }
 
-
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L430
-void LMHead::forward(InferenceState &infer) {
+template <typename TLinear>
+void LMHead<TLinear>::forward(InferenceState &infer) {
     matmul(infer.logits, lm_head, infer.hidden_state);
 }
 
-
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L334
-// Processes 1 token at a time and do a rewrite to support multiple tokens
-template <typename TMlp>
-void Model<TMlp>::forward(InferenceState &infer, size_t token_id) {
-    // Get token embedding
+template <typename TGateUp, typename TLinear>
+void Model<TGateUp, TLinear>::forward(InferenceState &infer, size_t token_id) {
     embedding.forward(infer, token_id);
 
-    // Forward each layer
     for (auto& layer : layers) {
         layer.forward(infer);
     }
 
-    // Norm
     norm.forward(infer);
 
-    // Get logits
     lmHead.forward(infer);
 
     infer.pos++;
 }
 
+template void MLP<float, float>::forward(InferenceState &);
+template void Layer<float, float>::forward(InferenceState &);
+template void Model<float, float>::forward(InferenceState &, size_t);
+template void Embedding<float>::forward(InferenceState&, size_t);
+template void RMSNorm<float>::forward(InferenceState&);
+template void LMHead<float>::forward(InferenceState&);
+template void Attention<float>::forward(InferenceState&);
 
-template void MLP<float>::forward(InferenceState &);
-template void Layer<float>::forward(InferenceState &);
-template void Model<float>::forward(InferenceState &, size_t);
+template void MLP<int8_t, float>::forward(InferenceState &);
+template void Layer<int8_t, float>::forward(InferenceState &);
+template void Model<int8_t, float>::forward(InferenceState &, size_t);
 
-template void MLP<int8_t>::forward(InferenceState &);
-template void Layer<int8_t>::forward(InferenceState &);
-template void Model<int8_t>::forward(InferenceState &, size_t);
+template void MLP<int8_t, fp16_t>::forward(InferenceState &);
+template void Layer<int8_t, fp16_t>::forward(InferenceState &);
+template void Model<int8_t, fp16_t>::forward(InferenceState &, size_t);
+template void Embedding<fp16_t>::forward(InferenceState&, size_t);
+template void RMSNorm<fp16_t>::forward(InferenceState&);
+template void LMHead<fp16_t>::forward(InferenceState&);
+template void Attention<fp16_t>::forward(InferenceState&);

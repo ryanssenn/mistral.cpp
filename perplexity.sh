@@ -2,9 +2,9 @@
 #
 # Perplexity benchmark + regression tracker.
 #
-# Computes int8-engine perplexity (fast) and the HF fp32 reference perplexity
+# Computes Q8F16-engine perplexity (fast) and the HF fp32 reference perplexity
 # (slow, cached) on the same prompt, prints both plus the gap, and compares the
-# int8 number against a saved baseline so improvements/regressions are visible
+# engine number against a saved baseline so improvements/regressions are visible
 # after each bugfix.
 #
 # Usage:
@@ -65,7 +65,10 @@ json_get() {
 
 base_sha="$(json_get prompt_sha)"
 base_hf="$(json_get hf_ppl)"
-base_int8="$(json_get int8_ppl)"
+base_q8f16="$(json_get q8f16_ppl)"
+if [ -z "$base_q8f16" ]; then
+    base_q8f16="$(json_get int8_ppl)"
+fi
 
 # --- HF fp32 reference (cached unless forced / prompt changed) ---------------
 hf_ppl=""
@@ -83,12 +86,12 @@ else
     echo "HF fp32 perplexity: $hf_ppl"
 fi
 
-# --- int8 engine perplexity (fast path) --------------------------------------
-echo "Computing int8 engine perplexity..."
+# --- Q8F16 engine perplexity (fast path) -------------------------------------
+echo "Computing Q8F16 engine perplexity..."
 eng_out="$("$ENGINE" "$MODEL_MOG" "$prompt" --ppl)"
-int8_ppl="$(printf '%s\n' "$eng_out" | grep -E '^perplexity:' | awk '{print $2}')"
-int8_tokens="$(printf '%s\n' "$eng_out" | grep -E '^tokens:' | awk '{print $2}')"
-[ -n "$int8_ppl" ] || { echo "Failed to parse engine perplexity from:" >&2; echo "$eng_out" >&2; exit 1; }
+q8f16_ppl="$(printf '%s\n' "$eng_out" | grep -E '^perplexity:' | awk '{print $2}')"
+q8f16_tokens="$(printf '%s\n' "$eng_out" | grep -E '^tokens:' | awk '{print $2}')"
+[ -n "$q8f16_ppl" ] || { echo "Failed to parse engine perplexity from:" >&2; echo "$eng_out" >&2; exit 1; }
 
 # --- Report -------------------------------------------------------------------
 echo
@@ -96,24 +99,24 @@ echo "===================================================="
 echo "  perplexity            prompt sha: ${prompt_sha:0:12}"
 echo "===================================================="
 printf "  HF reference        %s\n" "$hf_ppl"
-printf "  int8 engine         %s\n" "$int8_ppl"
-if [ -n "$hf_ppl" ] && [ -n "$int8_ppl" ]; then
-    awk -v a="$int8_ppl" -v b="$hf_ppl" 'BEGIN{printf "  gap (int8 - HF)     %.4f\n", a-b}'
+printf "  Q8F16 engine        %s\n" "$q8f16_ppl"
+if [ -n "$hf_ppl" ] && [ -n "$q8f16_ppl" ]; then
+    awk -v a="$q8f16_ppl" -v b="$hf_ppl" 'BEGIN{printf "  gap (Q8F16 - HF)    %.4f\n", a-b}'
 fi
 
-if [ -n "$hf_tokens" ] && [ -n "$int8_tokens" ] && [ "$hf_tokens" != "$int8_tokens" ]; then
-    echo "  WARNING: HF tokenized $hf_tokens tokens but engine tokenized $int8_tokens;"
+if [ -n "$hf_tokens" ] && [ -n "$q8f16_tokens" ] && [ "$hf_tokens" != "$q8f16_tokens" ]; then
+    echo "  WARNING: HF tokenized $hf_tokens tokens but engine tokenized $q8f16_tokens;"
     echo "           perplexities are not over the identical sequence."
 fi
 
-if [ -n "$base_int8" ] && [ "$base_sha" = "$prompt_sha" ]; then
-    awk -v cur="$int8_ppl" -v base="$base_int8" 'BEGIN{
+if [ -n "$base_q8f16" ] && [ "$base_sha" = "$prompt_sha" ]; then
+    awk -v cur="$q8f16_ppl" -v base="$base_q8f16" 'BEGIN{
         d = cur - base;
         tag = (d < -0.0001) ? "IMPROVED" : (d > 0.0001) ? "REGRESSED" : "unchanged";
-        printf "  vs baseline int8    %.4f  (%+.4f, %s)\n", base, d, tag;
+        printf "  vs baseline Q8F16   %.4f  (%+.4f, %s)\n", base, d, tag;
     }'
 else
-    echo "  vs baseline int8    (no baseline for this prompt; use --save to record)"
+    echo "  vs baseline Q8F16   (no baseline for this prompt; use --save to record)"
 fi
 echo "===================================================="
 
@@ -122,9 +125,9 @@ if [ "$save_baseline" -eq 1 ]; then
     cat > "$BASELINE" <<EOF
 {
   "prompt_sha": "$prompt_sha",
-  "tokens": ${int8_tokens:-0},
+  "tokens": ${q8f16_tokens:-0},
   "hf_ppl": $hf_ppl,
-  "int8_ppl": $int8_ppl,
+  "q8f16_ppl": $q8f16_ppl,
   "date": "$(date -u +%Y-%m-%d)"
 }
 EOF

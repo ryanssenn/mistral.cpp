@@ -14,7 +14,7 @@ mog.cpp is a from-scratch C++ inference engine for `.mog` model files. At a high
        └──────── append token, run again ─────────────┘
 ```
 
-For the on-disk format, see [model-binary.md](model-binary.md).
+For the on-disk format, see [model-binary.md](model-binary.md). For the f16 compute roadmap, see [f16-optimizations.md](f16-optimizations.md).
 
 ---
 
@@ -22,7 +22,7 @@ For the on-disk format, see [model-binary.md](model-binary.md).
 
 Hugging Face checkpoints are a folder of config, tokenizer, and sharded weights. `export_mistral.py` packs them into one **`.mog`** file.
 
-At startup, `Parameters::load_parameters` memory-maps that file and exposes each weight as a strided `Tensor` view. The ~18 GB payload is not copied into heap RAM.
+At startup, `Parameters::load_parameters` memory-maps that file and exposes each weight as a strided `Tensor` view. The ~10 GB Q8F16 payload is not copied into heap RAM.
 
 | Step | Where |
 |------|-------|
@@ -88,7 +88,7 @@ The chosen ID is decoded to text, printed, and fed back into step 3 until a stop
 | `src/main.cpp` | `mog-cli`: load model, tokenize, generate or `--ppl` perplexity |
 | `src/loader/parameters.cpp` | Parse `.mog` header, mmap weights |
 | `src/tokenizer/tokenizer.cpp` | BPE encode/decode |
-| `src/common/tensor.cpp` | f32 and int8 tensor views (on-the-fly dequant) |
+| `src/common/tensor.cpp` | f32, f16, and int8 tensor views (on-the-fly promote/dequant) |
 | `src/backend/cpu/kernels.cpp` | Core ops (OpenMP + NEON/AVX2) |
 | `src/model/mistral/modules.cpp` | Full Mistral forward pass |
 | `test/mistral/` | Parity tests vs Hugging Face reference |
@@ -97,5 +97,5 @@ The chosen ID is decoded to text, printed, and fed back into step 3 until a stop
 
 ## Performance notes
 
-- **Quantization:** export supports per-group int8 (`Q8_K`); weights dequantize during matmul.
+- **Quantization:** default export is **Q8F16** — int8 MLP gate/up, f16 elsewhere; weights promote/dequantize during matmul.
 - **CPU:** OpenMP parallelizes matmul rows and attention heads; SIMD dot products on Apple Silicon (NEON) and x86 (AVX2).

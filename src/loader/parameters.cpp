@@ -71,7 +71,7 @@ void Parameters::load_config(BinaryReader& reader){
     config.head_dim = config.hidden_size / config.n_heads;
 }
 
-void Parameters::load_tensor(std::unordered_map<std::string, std::variant<Tensor<float>, Tensor<int8_t>>>& m, char* p, const std::string& key, uint8_t dtype, const std::vector<size_t>& shape, uint64_t offset, uint64_t scale_offset, uint32_t scale_size){
+void Parameters::load_tensor(std::unordered_map<std::string, WeightTensor>& m, char* p, const std::string& key, uint8_t dtype, const std::vector<size_t>& shape, uint64_t offset, uint64_t scale_offset, uint32_t scale_size){
     if (dtype == static_cast<uint8_t>(model_format::DType::F32)){
         Tensor<float> t = Tensor(reinterpret_cast<float*>(p + offset), shape);
         m.insert({key, t});
@@ -81,6 +81,22 @@ void Parameters::load_tensor(std::unordered_map<std::string, std::variant<Tensor
         Tensor<int8_t> t = Tensor(reinterpret_cast<int8_t*>(p + offset), std::vector<float>(scale_start, scale_start + scale_size), shape);
         m.insert({key, t});
     }
+    else if (dtype == static_cast<uint8_t>(model_format::DType::F16)){
+        Tensor<fp16_t> t = Tensor(reinterpret_cast<fp16_t*>(p + offset), shape);
+        m.insert({key, t});
+    }
+}
+
+bool Parameters::uses_f16_linear_weights() const {
+    if (layer_weights.empty()) {
+        return false;
+    }
+    const auto& weights = layer_weights[0];
+    auto it = weights.find("self_attn.q_proj.weight");
+    if (it == weights.end()) {
+        return false;
+    }
+    return std::holds_alternative<Tensor<fp16_t>>(it->second);
 }
 
 void Parameters::load_weights(char* p, BinaryReader& reader){
@@ -198,4 +214,5 @@ Tensor<T> Parameters::get_tensor(int layer, const std::string& name){
 
 template Tensor<float> Parameters::get_tensor<float>(int, const std::string&);
 template Tensor<int8_t> Parameters::get_tensor<int8_t>(int, const std::string&);
+template Tensor<fp16_t> Parameters::get_tensor<fp16_t>(int, const std::string&);
 

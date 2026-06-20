@@ -10,7 +10,9 @@ python3 export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ./mistral.mog
 
 **Inputs from HF:** `config.json`, `tokenizer.json`, `model.safetensors.index.json` + shard files.
 
-**Output:** `mistral.mog` (~18 GB for Mistral 7B int8).
+**Output:** `mistral.mog` (~10 GB for Mistral 7B Q8F16).
+
+**Q8F16** is the default export format: int8-quantized `mlp.gate_proj`/`mlp.up_proj` (Q8), float16 storage for all other weights (F16). Stored as `quant: "Q8F16"` in the config KV.
 
 ---
 
@@ -26,7 +28,7 @@ Think of a `.mog` file as three parts stacked back-to-back:
 ├─────────────────────────────────────────┤
 │  Padding (0–63 bytes)                   │  align next section to 64-byte boundary
 ├─────────────────────────────────────────┤
-│  Weight payload (~18 GB)                │  raw tensor bytes; mmap'd, not copied
+│  Weight payload (~10 GB)                │  raw tensor bytes; mmap'd, not copied
 └─────────────────────────────────────────┘
 ```
 
@@ -92,7 +94,7 @@ repeat count times:
 | `max_position_embeddings` | UINT32 | 32768 |
 | `rope_theta` | FLOAT32 | 10000.0 |
 | `norm_eps` | FLOAT32 | 1e-5 |
-| `quant` | STRING | `"int8"` or `"f32"` |
+| `quant` | STRING | `"Q8F16"` or `"f32"` |
 
 `head_dim` is not stored; C++ computes it as `hidden_size / n_heads`.
 
@@ -119,7 +121,7 @@ One entry per weight tensor (291 for Mistral 7B: 3 global + 32 layers × 9).
 u32 count
 repeat count times:
     string name          # full HF name, e.g. "model.layers.0.self_attn.q_proj.weight"
-    u8   dtype           # 0 = f32, 1 = int8
+    u8   dtype           # 0 = f32, 1 = int8, 2 = f16
     u8   ndim            # number of shape dimensions (1–4)
     u32  dims[4]         # shape; unused slots are 0
     u64  offset          # byte offset from payload start
@@ -127,7 +129,7 @@ repeat count times:
     u32  scale_size      # int8 only: number of f32 scale values
 ```
 
-For **f32** tensors, `scale_offset` and `scale_size` are zero.
+For **f32** and **f16** tensors, `scale_offset` and `scale_size` are zero.
 
 **After load, names are routed:**
 
@@ -146,15 +148,25 @@ Tensors are written in `weight_map` order during export. Each tensor’s data is
 
 ### f32 tensors
 
-Contiguous `float32` values. C++ wraps them as:
+Contiguous IEEE 754 float32 values. C++ wraps them as:
 
 ```cpp
 Tensor<float>(float* at offset, shape)
 ```
 
-### int8 tensors (default export)
+### f16 tensors (Q8F16 export, non-quantized weights)
 
-Only **`mlp.gate_proj`** and **`mlp.up_proj`** are quantized per layer. Everything else (attention, `down_proj`, embeddings, norms) stays f32.
+Contiguous IEEE 754 binary16 values (2 bytes/elem). C++ wraps them as:
+
+```cpp
+Tensor<fp16_t>(fp16_t* at offset, shape)
+```
+
+Weights are promoted to f32 at compute time. See [f16-optimizations.md](f16-optimizations.md) for the native f16 compute roadmap.
+
+### int8 tensors (Q8F16 export)
+
+Only **`mlp.gate_proj`** and **`mlp.up_proj`** are quantized per layer. Everything else (attention, `down_proj`, embeddings, norms) is stored as **f16**.
 
 Quantization is **symmetric per group of 64** weights, mapped to `[-127, 127]`:
 
@@ -202,9 +214,9 @@ for each tensor entry:
     create Tensor view pointing into payload (no copy of weights)
 ```
 
-Tensors live in `global_weights` or `layer_weights[layer]` as `variant<Tensor<float>, Tensor<int8_t>>`.
+Tensors live in `global_weights` or `layer_weights[layer]` as `variant<Tensor<float>, Tensor<int8_t>, Tensor<fp16_t>>`.
 
-When `config.quant == "int8"`, the model uses int8 matmul for gate/up projections only; attention and `down_proj` still run in f32.
+When `config.quant == "Q8F16"` (legacy files may have `"int8"`), the model uses int8 matmul for gate/up projections; all other linear weights are f16 and promoted to f32 at compute time.
 
 ---
 
@@ -214,7 +226,7 @@ When `config.quant == "int8"`, the model uses int8 matmul for gate/up projection
 |-------|--------|
 | Magic | `MOG\0` |
 | Version | `1` |
-| Default export | int8 gate/up, f32 elsewhere |
-| Mistral 7B size | ~18 GB |
+| Default export | Q8F16 |
+| Mistral 7B size | ~10 GB |
 | Header | Small; tokenizer dominates |
 | Weights | mmap'd; offsets in tensor table |

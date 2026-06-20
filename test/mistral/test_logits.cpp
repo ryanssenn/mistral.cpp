@@ -1,4 +1,6 @@
 #include "setup/context.h"
+#include "fp16.h"
+#include "parameters.h"
 #include <unordered_map>
 
 static constexpr size_t LOGITS_TOPK = 10;
@@ -39,10 +41,10 @@ static float aligned_value_error(const TopK& got, const Tensor<float>& exp_ids,
 // token, so the int8 model always sees the exact context f32 saw. This isolates
 // per-step int8 logit error instead of letting trajectories drift apart.
 // Pass/fail: f32 requires top-1 argmax; int8 requires full top-10 set and max logit error < 0.1.
-template <typename TMlp>
+template <typename TGateUp, typename TLinear>
 static int run_logits_prompt(const std::string& prefix) {
     std::shared_ptr<Parameters> params = get_params();
-    Model<TMlp> model(params);
+    Model<TGateUp, TLinear> model(params);
 
     auto it = PROMPTS.find(prefix);
     if (it == PROMPTS.end()) {
@@ -89,9 +91,9 @@ static int run_logits_prompt(const std::string& prefix) {
                   << " max_val_err=" << max_err
                   << std::endl;
 
-        // int8 vs bf16 HF goldens: same top-10 set and close logit values.
+        // Q8F16 vs bf16 HF goldens: same top-10 set and close logit values.
         bool step_ok = top1_match;
-        if (params->config.quant == "int8") {
+        if (is_q8f16(params->config.quant)) {
             step_ok = overlap + 1 >= LOGITS_TOPK && max_err < 1e-1f;
         }
         if (!step_ok) {
@@ -109,7 +111,7 @@ static int run_logits_prompt(const std::string& prefix) {
     return failed;
 }
 
-template <typename TMlp>
+template <typename TGateUp, typename TLinear>
 static int test_logits_multi() {
     if (!has_logits_golden()) {
         std::cout << "Skipping logits tests (missing test/mistral/logits_expected.txt). "
@@ -119,7 +121,7 @@ static int test_logits_multi() {
 
     int failed = 0;
     for (const auto& entry : PROMPTS) {
-        if (run_logits_prompt<TMlp>(entry.first) != 0) {
+        if (run_logits_prompt<TGateUp, TLinear>(entry.first) != 0) {
             failed = 1;
         }
     }
@@ -128,7 +130,7 @@ static int test_logits_multi() {
 
 // Per-layer atol for layer-stack checks (int8 vs bf16 HF goldens).
 static float layer_stack_atol(const std::string& quant, size_t layer, size_t n_layers, bool is_norm) {
-    if (quant != "int8") {
+    if (!is_q8f16(quant)) {
         return 5e-2f;
     }
     if (is_norm) {
@@ -140,10 +142,10 @@ static float layer_stack_atol(const std::string& quant, size_t layer, size_t n_l
     return 1.5e-1f; // L0–L30, worst ~0.11 (L29 sky)
 }
 
-template <typename TMlp>
+template <typename TGateUp, typename TLinear>
 static int run_layer_stack_prompt(const std::string& prefix) {
     std::shared_ptr<Parameters> params = get_params();
-    Model<TMlp> model(params);
+    Model<TGateUp, TLinear> model(params);
 
     auto it = PROMPTS.find(prefix);
     if (it == PROMPTS.end()) {
@@ -189,7 +191,7 @@ static int run_layer_stack_prompt(const std::string& prefix) {
     return 0;
 }
 
-template <typename TMlp>
+template <typename TGateUp, typename TLinear>
 static int test_layer_stack() {
     if (expected.find("layer_stack_sky_L0") == expected.end()) {
         std::cout << "Skipping layer stack tests (regenerate with DUMP_LAYER_STACK=1). "
@@ -198,19 +200,33 @@ static int test_layer_stack() {
     }
 
     for (const auto& entry : PROMPTS) {
-        if (run_layer_stack_prompt<TMlp>(entry.first) != 0) {
+        if (run_layer_stack_prompt<TGateUp, TLinear>(entry.first) != 0) {
             return 1;
         }
     }
     return 0;
 }
 
-static int test_logits_multi_f32() { return test_logits_multi<float>(); }
-static int test_logits_multi_int8() { return test_logits_multi<int8_t>(); }
-static int test_layer_stack_f32() { return test_layer_stack<float>(); }
-static int test_layer_stack_int8() { return test_layer_stack<int8_t>(); }
+static int test_logits_multi_f32() { return test_logits_multi<float, float>(); }
+static int test_logits_multi_int8() {
+    auto params = get_params();
+    if (params->uses_f16_linear_weights()) {
+        return test_logits_multi<int8_t, fp16_t>();
+    }
+    return test_logits_multi<int8_t, float>();
+}
+static int test_layer_stack_f32() { return test_layer_stack<float, float>(); }
+static int test_layer_stack_int8() {
+    auto params = get_params();
+    if (params->uses_f16_linear_weights()) {
+        return test_layer_stack<int8_t, fp16_t>();
+    }
+    return test_layer_stack<int8_t, float>();
+}
 
 RegisterTest logits_multi_reg("test logits multi top10", "f32", &test_logits_multi_f32);
+RegisterTest logits_multi_reg_q8f16("test logits multi top10", "Q8F16", &test_logits_multi_int8);
 RegisterTest logits_multi_reg_int8("test logits multi top10", "int8", &test_logits_multi_int8);
 RegisterTest layer_stack_reg("test layer stack prefill", "f32", &test_layer_stack_f32);
+RegisterTest layer_stack_reg_q8f16("test layer stack prefill", "Q8F16", &test_layer_stack_int8);
 RegisterTest layer_stack_reg_int8("test layer stack prefill", "int8", &test_layer_stack_int8);

@@ -1,6 +1,7 @@
 #include <iostream>
 #include "parameters.h"
 #include "modules.h"
+#include "fp16.h"
 #include <random>
 #include <chrono>
 #include <cmath>
@@ -69,9 +70,9 @@ uint32_t sample_multinomial(InferenceState& infer, float temp){
     return infer.probs.numel - 1;
 }
 
-template <typename T>
+template <typename TGateUp, typename TLinear>
 uint32_t generate(
-    Model<T>& model,
+    Model<TGateUp, TLinear>& model,
     InferenceState& infer,
     size_t token,
     float temp,
@@ -86,9 +87,9 @@ uint32_t generate(
     return sample_multinomial(infer, temp);
 }
 
-template <typename T>
+template <typename TGateUp, typename TLinear>
 void run_inference(std::shared_ptr<Parameters> params, InferenceState& infer, const std::vector<uint32_t>& got, float temp) {
-    Model<T> model(params);
+    Model<TGateUp, TLinear> model(params);
     RotaryEmbedding::init_freq(infer, params->config);
 
     for (int i=0; i<(int)got.size()-1; i++){
@@ -131,9 +132,9 @@ void run_inference(std::shared_ptr<Parameters> params, InferenceState& infer, co
 
 // Teacher-forced perplexity over the prompt tokens using the actual engine.
 // PPL = exp( mean_i -log softmax(logits_i)[token_{i+1}] ).
-template <typename T>
+template <typename TGateUp, typename TLinear>
 void run_perplexity(std::shared_ptr<Parameters> params, InferenceState& infer, const std::vector<uint32_t>& tokens) {
-    Model<T> model(params);
+    Model<TGateUp, TLinear> model(params);
     RotaryEmbedding::init_freq(infer, params->config);
     infer.pos = 0;
 
@@ -197,18 +198,26 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> got = params->tokenizer.encode(text);
 
     if (ppl) {
-        if (params->config.quant == "int8") {
-            run_perplexity<int8_t>(params, infer, got);
-        } else if (params->config.quant == "f32") {
-            run_perplexity<float>(params, infer, got);
+        if (params->config.quant == "f32") {
+            run_perplexity<float, float>(params, infer, got);
+        } else if (is_q8f16(params->config.quant)) {
+            if (params->uses_f16_linear_weights()) {
+                run_perplexity<int8_t, fp16_t>(params, infer, got);
+            } else {
+                run_perplexity<int8_t, float>(params, infer, got);
+            }
         }
         return 0;
     }
 
-    if (params->config.quant == "int8") {
-        run_inference<int8_t>(params, infer, got, temp);
-    } else if (params->config.quant == "f32") {
-        run_inference<float>(params, infer, got, temp);
+    if (params->config.quant == "f32") {
+        run_inference<float, float>(params, infer, got, temp);
+    } else if (is_q8f16(params->config.quant)) {
+        if (params->uses_f16_linear_weights()) {
+            run_inference<int8_t, fp16_t>(params, infer, got, temp);
+        } else {
+            run_inference<int8_t, float>(params, infer, got, temp);
+        }
     }
 
     return 0;

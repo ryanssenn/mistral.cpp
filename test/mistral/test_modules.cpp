@@ -1,13 +1,13 @@
 #include "setup/context.h"
+#include "fp16.h"
 
-template <typename T>
+template <typename TGateUp, typename TLinear>
 int test_layer() {
     std::shared_ptr<Parameters> params = get_params();
     infer.pos = 0;
 
-    Layer<T> layer(0, params);
+    Layer<TGateUp, TLinear> layer(0, params);
 
-    // Test over sequence of 3 tokens
     for (int i=1;i<4;i++) {
         infer.hidden_state.copy_from(expected.at("layer_h" + std::to_string(i)));
         layer.forward(infer);
@@ -21,16 +21,15 @@ int test_layer() {
     return 0;
 }
 
-RegisterTest layer_reg("test layer", "f32", &test_layer<float>);
+RegisterTest layer_reg("test layer", "f32", &test_layer<float, float>);
 
-template <typename T>
+template <typename TLinear>
 int test_attention() {
     std::shared_ptr<Parameters> params = get_params();
     infer.pos = 0;
 
-    Attention attn(params->get_tensor<T>(0, "self_attn.q_proj.weight"), params->get_tensor<T>(0, "self_attn.k_proj.weight"), params->get_tensor<T>(0, "self_attn.v_proj.weight"), params->get_tensor<T>(0, "self_attn.o_proj.weight"), 0);
+    Attention<TLinear> attn(params->get_tensor<TLinear>(0, "self_attn.q_proj.weight"), params->get_tensor<TLinear>(0, "self_attn.k_proj.weight"), params->get_tensor<TLinear>(0, "self_attn.v_proj.weight"), params->get_tensor<TLinear>(0, "self_attn.o_proj.weight"), 0);
 
-    // Test over sequence of 3 tokens
     for (int i=1;i<4;i++){
         infer.hidden_state.copy_from(expected.at("attn_h" + std::to_string(i)));
         attn.forward(infer);
@@ -60,15 +59,23 @@ int test_attention() {
     return 0;
 }
 
-RegisterTest attention_reg("test attention", "any", &test_attention<float>);
+static int test_attention_dispatch() {
+    auto params = get_params();
+    if (params->uses_f16_linear_weights()) {
+        return test_attention<fp16_t>();
+    }
+    return test_attention<float>();
+}
 
-template <typename T>
+RegisterTest attention_reg("test attention", "any", &test_attention_dispatch);
+
+template <typename TGateUp, typename TLinear>
 int test_mlp(){
     std::shared_ptr<Parameters> params = get_params();
 
-    MLP<T> mlp(params->get_tensor<float>(0, "mlp.down_proj.weight"),
-               params->get_tensor<T>(0, "mlp.gate_proj.weight"),
-               params->get_tensor<T>(0, "mlp.up_proj.weight"));
+    MLP<TGateUp, TLinear> mlp(params->get_tensor<TLinear>(0, "mlp.down_proj.weight"),
+               params->get_tensor<TGateUp>(0, "mlp.gate_proj.weight"),
+               params->get_tensor<TGateUp>(0, "mlp.up_proj.weight"));
 
     infer.hidden_state.copy_from(expected.at("mlp_h"));
 
@@ -82,8 +89,16 @@ int test_mlp(){
     return 0;
 }
 
-RegisterTest mlp_feedforward_reg("test attention feedforward mlp", "f32", &test_mlp<float>);
-RegisterTest mlp_feedforward_reg_q("test attention feedforward mlp", "int8", &test_mlp<int8_t>);
+RegisterTest mlp_feedforward_reg("test attention feedforward mlp", "f32", &test_mlp<float, float>);
+static int test_mlp_int8() {
+    auto params = get_params();
+    if (params->uses_f16_linear_weights()) {
+        return test_mlp<int8_t, fp16_t>();
+    }
+    return test_mlp<int8_t, float>();
+}
+RegisterTest mlp_feedforward_reg_q("test attention feedforward mlp", "Q8F16", &test_mlp_int8);
+RegisterTest mlp_feedforward_reg_legacy_q("test attention feedforward mlp", "int8", &test_mlp_int8);
 
 int test_kv_cache() {
     infer.pos = 5;
@@ -115,42 +130,59 @@ int test_kv_cache() {
 
 RegisterTest kv_cache_reg("test kv cache", "any", &test_kv_cache);
 
-int test_embedding() {
+static int test_embedding_dispatch() {
     std::shared_ptr<Parameters> params = get_params();
 
-    Embedding emb(params->get_tensor<float>(-1, "model.embed_tokens.weight"));
+    if (params->uses_f16_linear_weights()) {
+        Embedding<fp16_t> emb(params->get_tensor<fp16_t>(-1, "model.embed_tokens.weight"));
+        size_t token_id = 0;
+        emb.forward(infer, token_id);
+        if (!equals(infer.hidden_state.data[0], -2.1864e-36f)) {
+            std::cout << "emb1[0][0] mismatch" << std::endl;
+            return 1;
+        }
+        if (!equals(infer.hidden_state.data[4095], -6.3947e-36f)) {
+            std::cout << "emb1[0][-1] mismatch" << std::endl;
+            return 1;
+        }
+        token_id = 31999;
+        emb.forward(infer, token_id);
+        if (!equals(infer.hidden_state.data[0], -0.0040f)) {
+            std::cout << "emb2[-1][0] mismatch" << std::endl;
+            return 1;
+        }
+        if (!equals(infer.hidden_state.data[4095], -0.0025f)) {
+            std::cout << "emb2[-1][-1] mismatch" << std::endl;
+            return 1;
+        }
+        return 0;
+    }
 
+    Embedding<float> emb(params->get_tensor<float>(-1, "model.embed_tokens.weight"));
     size_t token_id = 0;
     emb.forward(infer, token_id);
-
-    Tensor emb1 = infer.hidden_state;
-
-    if (!equals(emb1.data[0], -2.1864e-36f)) {
+    if (!equals(infer.hidden_state.data[0], -2.1864e-36f)) {
         std::cout << "emb1[0][0] mismatch" << std::endl;
         return 1;
     }
-    if (!equals(emb1.data[4095], -6.3947e-36f)) {
+    if (!equals(infer.hidden_state.data[4095], -6.3947e-36f)) {
         std::cout << "emb1[0][-1] mismatch" << std::endl;
         return 1;
     }
-
     token_id = 31999;
     emb.forward(infer, token_id);
-    Tensor emb2 = infer.hidden_state;
-
-    if (!equals(emb2.data[0], -0.0040f)) {
+    if (!equals(infer.hidden_state.data[0], -0.0040f)) {
         std::cout << "emb2[-1][0] mismatch" << std::endl;
         return 1;
     }
-    if (!equals(emb2.data[4095], -0.0025f)) {
+    if (!equals(infer.hidden_state.data[4095], -0.0025f)) {
         std::cout << "emb2[-1][-1] mismatch" << std::endl;
         return 1;
     }
-
     return 0;
 }
 
-RegisterTest embedding_reg("test embedding", "any", &test_embedding);
+RegisterTest embedding_reg("test embedding", "any", &test_embedding_dispatch);
 
 int test_rotary_embedding_inv_freq(){
     std::shared_ptr<Parameters> params = get_params();
@@ -210,7 +242,7 @@ int test_rmsnorm() {
     Tensor g = expected.at("norm_g");
     Tensor y = expected.at("norm_y");
 
-    RMSNorm rms(g);
+    RMSNorm<float> rms(g);
     rms.forward(infer);
 
     if (!equals(infer.hidden_state, y)) {
@@ -224,13 +256,18 @@ int test_rmsnorm() {
 RegisterTest rmsnorm_reg("test rmsnorm", "any", &test_rmsnorm);
 
 
-int test_lm_head() {
+static int test_lm_head_dispatch() {
     std::shared_ptr<Parameters> params = get_params();
 
-    LMHead l(params);
-    infer.hidden_state.copy_from(expected.at("lmhead_x"));
-
-    l.forward(infer);
+    if (params->uses_f16_linear_weights()) {
+        LMHead<fp16_t> l(params);
+        infer.hidden_state.copy_from(expected.at("lmhead_x"));
+        l.forward(infer);
+    } else {
+        LMHead<float> l(params);
+        infer.hidden_state.copy_from(expected.at("lmhead_x"));
+        l.forward(infer);
+    }
 
     if (!equals(infer.logits.data[0], 0.0362)) {
         std::cout << "lm head mismatch 1. expected=0.0362 got="
@@ -248,6 +285,4 @@ int test_lm_head() {
 }
 
 
-RegisterTest lm_head_reg("test lm head", "any", &test_lm_head);
-
-
+RegisterTest lm_head_reg("test lm head", "any", &test_lm_head_dispatch);

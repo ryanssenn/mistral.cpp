@@ -10,6 +10,7 @@ constexpr uint32_t FORMAT_VERSION = 1;
 enum class DType : uint8_t {
     F32 = 0,
     INT8 = 1,
+    F16 = 2,
 };
 
 enum class KVType : uint8_t {

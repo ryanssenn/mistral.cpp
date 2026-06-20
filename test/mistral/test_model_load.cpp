@@ -1,5 +1,7 @@
 #include "setup/context.h"
 #include "model_format.h"
+#include "fp16.h"
+#include "parameters.h"
 
 #include <cstring>
 #include <fstream>
@@ -8,7 +10,7 @@
 
 namespace {
 
-using TensorVariant = std::variant<Tensor<float>, Tensor<int8_t>>;
+using TensorVariant = std::variant<Tensor<float>, Tensor<int8_t>, Tensor<fp16_t>>;
 
 std::string resolve_model_path() {
     std::string model_path = "mistral.mog";
@@ -39,6 +41,9 @@ std::vector<size_t> tensor_shape(const TensorVariant& v) {
     if (std::holds_alternative<Tensor<float>>(v)) {
         return std::get<Tensor<float>>(v).shape;
     }
+    if (std::holds_alternative<Tensor<fp16_t>>(v)) {
+        return std::get<Tensor<fp16_t>>(v).shape;
+    }
     return std::get<Tensor<int8_t>>(v).shape;
 }
 
@@ -46,11 +51,28 @@ size_t tensor_numel(const TensorVariant& v) {
     if (std::holds_alternative<Tensor<float>>(v)) {
         return std::get<Tensor<float>>(v).get_numel();
     }
+    if (std::holds_alternative<Tensor<fp16_t>>(v)) {
+        return std::get<Tensor<fp16_t>>(v).get_numel();
+    }
     return std::get<Tensor<int8_t>>(v).get_numel();
 }
 
 bool is_int8_tensor(const TensorVariant& v) {
     return std::holds_alternative<Tensor<int8_t>>(v);
+}
+
+bool is_fp16_tensor(const TensorVariant& v) {
+    return std::holds_alternative<Tensor<fp16_t>>(v);
+}
+
+float tensor_get(const TensorVariant& v, size_t i) {
+    if (std::holds_alternative<Tensor<float>>(v)) {
+        return std::get<Tensor<float>>(v).get(i);
+    }
+    if (std::holds_alternative<Tensor<fp16_t>>(v)) {
+        return std::get<Tensor<fp16_t>>(v).get(i);
+    }
+    return std::get<Tensor<int8_t>>(v).get(i);
 }
 
 size_t shape_product(const std::vector<size_t>& shape) {
@@ -81,10 +103,17 @@ bool check_shape(const std::string& name, const std::vector<size_t>& got,
 }
 
 bool layer_tensor_wants_int8(const std::string& name, const std::string& quant) {
-    if (quant != "int8") {
+    if (!is_q8f16(quant)) {
         return false;
     }
     return name == "mlp.gate_proj.weight" || name == "mlp.up_proj.weight";
+}
+
+bool layer_tensor_wants_f16(const std::string& name, const std::string& quant, bool f16_linear) {
+    if (!is_q8f16(quant) || !f16_linear) {
+        return false;
+    }
+    return !layer_tensor_wants_int8(name, quant);
 }
 
 TensorVariant& resolve_tensor(Parameters& params, const std::string& key, int layer) {
@@ -234,8 +263,8 @@ int test_mog_config() {
     if (!expect_near("rope_theta", c.rope_theta, 10000.0f, 1e-3f)) return 1;
     if (!expect_near("norm_eps", c.norm_eps, 1e-5f, 1e-8f)) return 1;
 
-    if (c.quant != "int8" && c.quant != "f32") {
-        std::cerr << "quant mismatch: got " << c.quant << ", want int8 or f32\n";
+    if (c.quant != "Q8F16" && c.quant != "f32" && c.quant != "int8") {
+        std::cerr << "quant mismatch: got " << c.quant << ", want Q8F16 or f32\n";
         return 1;
     }
 
@@ -250,6 +279,7 @@ int test_mog_config() {
 int test_mog_tensor_inventory() {
     const std::shared_ptr<Parameters> params = get_params();
     const std::string& quant = params->config.quant;
+    const bool f16_linear = params->uses_f16_linear_weights();
 
     if (!expect_eq("global tensor count", params->global_weights.size(), size_t{3})) {
         return 1;
@@ -284,9 +314,18 @@ int test_mog_tensor_inventory() {
             }
 
             const bool want_int8 = layer_tensor_wants_int8(spec.name, quant);
+            const bool want_f16 = layer_tensor_wants_f16(spec.name, quant, f16_linear);
             if (is_int8_tensor(v) != want_int8) {
                 std::cerr << spec.name << " dtype mismatch at layer " << layer
-                          << ": expected " << (want_int8 ? "int8" : "f32") << "\n";
+                          << ": expected " << (want_int8 ? "int8" : (want_f16 ? "f16" : "f32")) << "\n";
+                return 1;
+            }
+            if (want_f16 && !is_fp16_tensor(v)) {
+                std::cerr << spec.name << " dtype mismatch at layer " << layer << ": expected f16\n";
+                return 1;
+            }
+            if (!want_int8 && !want_f16 && is_fp16_tensor(v)) {
+                std::cerr << spec.name << " dtype mismatch at layer " << layer << ": expected f32\n";
                 return 1;
             }
         }
@@ -309,13 +348,26 @@ int test_mog_tensor_inventory() {
             return 1;
         }
         if (is_int8_tensor(v)) {
+            std::cerr << spec.name << " should not be int8\n";
+            return 1;
+        }
+        if (is_q8f16(quant) && f16_linear && !is_fp16_tensor(v)) {
+            std::cerr << spec.name << " should be f16\n";
+            return 1;
+        }
+        if (quant == "f32" && !std::holds_alternative<Tensor<float>>(v)) {
             std::cerr << spec.name << " should be f32\n";
             return 1;
         }
     }
 
-    (void)params->get_tensor<float>(0, "self_attn.q_proj.weight");
-    (void)params->get_tensor<float>(-1, "lm_head.weight");
+    if (f16_linear) {
+        (void)params->get_tensor<fp16_t>(0, "self_attn.q_proj.weight");
+        (void)params->get_tensor<fp16_t>(-1, "lm_head.weight");
+    } else {
+        (void)params->get_tensor<float>(0, "self_attn.q_proj.weight");
+        (void)params->get_tensor<float>(-1, "lm_head.weight");
+    }
 
     return 0;
 }
@@ -327,16 +379,24 @@ int test_mog_weight_spotcheck() {
         TensorVariant& v = resolve_tensor(*params, entry.key, entry.layer);
         const size_t n = tensor_numel(v);
 
-        float first_val;
-        float last_val;
-        if (std::holds_alternative<Tensor<float>>(v)) {
-            auto& t = std::get<Tensor<float>>(v);
-            first_val = t.get(0);
-            last_val = t.get(n - 1);
-        } else {
-            auto& t = std::get<Tensor<int8_t>>(v);
-            first_val = t.get(0);
-            last_val = t.get(n - 1);
+        const float first_val = tensor_get(v, 0);
+        const float last_val = tensor_get(v, n - 1);
+        const float atol = is_fp16_tensor(v) ? 1e-3f : 0.0f;
+
+        if (atol > 0.0f) {
+            if (!expect_near("first val", first_val, entry.first, atol)) {
+                std::cerr << entry.key;
+                if (entry.layer >= 0) std::cerr << " (layer " << entry.layer << ")";
+                std::cerr << "\n";
+                return 1;
+            }
+            if (!expect_near("last val", last_val, entry.last, atol)) {
+                std::cerr << entry.key;
+                if (entry.layer >= 0) std::cerr << " (layer " << entry.layer << ")";
+                std::cerr << "\n";
+                return 1;
+            }
+            continue;
         }
 
         if (!equals(first_val, entry.first)) {
@@ -362,11 +422,14 @@ int test_mog_weight_spotcheck() {
     return 0;
 }
 
-static RegisterTest mog_header_f32("mog header", "f32", &test_mog_header);
+static RegisterTest mog_header_q8f16("mog header", "Q8F16", &test_mog_header);
 static RegisterTest mog_header_int8("mog header", "int8", &test_mog_header);
 static RegisterTest mog_config_f32("mog config", "f32", &test_mog_config);
+static RegisterTest mog_config_q8f16("mog config", "Q8F16", &test_mog_config);
 static RegisterTest mog_config_int8("mog config", "int8", &test_mog_config);
 static RegisterTest mog_inventory_f32("mog tensor inventory", "f32", &test_mog_tensor_inventory);
+static RegisterTest mog_inventory_q8f16("mog tensor inventory", "Q8F16", &test_mog_tensor_inventory);
 static RegisterTest mog_inventory_int8("mog tensor inventory", "int8", &test_mog_tensor_inventory);
 static RegisterTest mog_spotcheck_f32("mog weight spotcheck", "f32", &test_mog_weight_spotcheck);
+static RegisterTest mog_spotcheck_q8f16("mog weight spotcheck", "Q8F16", &test_mog_weight_spotcheck);
 static RegisterTest mog_spotcheck_int8("mog weight spotcheck", "int8", &test_mog_weight_spotcheck);

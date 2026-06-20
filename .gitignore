@@ -9,6 +9,7 @@ cmake-build-*/
 
 # Python
 venv/
+.ci-venv/
 __pycache__/
 
 # IDE / OS

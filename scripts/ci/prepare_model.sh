@@ -23,7 +23,13 @@ fi
 
 echo "mistral.mog not found — downloading checkpoint and exporting Q8F16..."
 
-python3 -m pip install --quiet -r requirements.txt huggingface_hub
+VENV="${CI_VENV:-.ci-venv}"
+if [ ! -d "$VENV" ]; then
+    python3 -m venv "$VENV"
+fi
+# shellcheck source=/dev/null
+source "$VENV/bin/activate"
+pip install --quiet -r requirements.txt huggingface_hub
 
 if [ ! -f "$HF_DIR/config.json" ]; then
     echo "Downloading $HF_REPO to $HF_DIR ..."
@@ -35,5 +41,6 @@ fi
 
 echo "Exporting Q8F16 model..."
 python3 export_mistral.py --model_dir "$HF_DIR" --out "$MODEL"
+deactivate 2>/dev/null || true
 
 echo "Export complete: $MODEL ($(du -h "$MODEL" | cut -f1))"

@@ -1,8 +1,8 @@
 #include <string>
 #include <iostream>
-#include "../../../include/parameters.h"
-#include "../../../include/kernels.h"
-#include "../../../include/modules.h"
+#include "parameters.h"
+#include "kernels.h"
+#include "modules.h"
 
 struct TestCase {
     std::string name;
@@ -32,8 +32,6 @@ struct TopK {
 
 TopK get_topk(const Tensor<float>& logits, size_t k);
 bool has_logits_golden();
-bool compare_topk(const TopK& got, const std::string& ids_key, const std::string& vals_key, float atol);
-bool compare_topk_greedy_argmax(const TopK& got, const std::string& ids_key);
 
 bool equals(float x, float y);
 bool equals(const Tensor<float>& x, const Tensor<float>& y);

@@ -1,7 +1,6 @@
-#include "../../include/tensor.h"
+#include "tensor.h"
 #include <cassert>
 #include <cstring>
-#include <iostream>
 
 template <typename T>
 size_t Tensor<T>::get_numel() const {
@@ -83,14 +82,6 @@ Tensor<T> Tensor<T>::reshape(std::vector<size_t> new_shape) {
     for (auto d : new_shape) new_numel *= d;
     assert(new_numel <= numel && "Reshape size mismatch");
     return Tensor(data, new_shape);
-}
-
-template <typename T>
-void Tensor<T>::print(){
-    for (int i=0;i<numel;i++){
-        std::cout << data[i] << " ";
-    }
-    std::cout << std::endl;
 }
 
 template<>

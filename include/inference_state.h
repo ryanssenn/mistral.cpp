@@ -12,7 +12,6 @@ struct InferenceState {
     Tensor<float> hidden_state; // [hidden_size]
     Tensor<float> residual; // [hidden_size]
     size_t pos = 0;
-    size_t seq_len = 0;
 
     Tensor<float> inv_freq; // [head_dim / 2]
     Tensor<float> cos; // [head_dim]

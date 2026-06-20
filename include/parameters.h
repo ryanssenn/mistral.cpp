@@ -1,10 +1,10 @@
+#pragma once
+
 #include <unordered_map>
 #include <string>
 #include "tensor.h"
 #include "tokenizer.h"
 #include <variant>
-
-#pragma once
 
 struct Config {
     size_t hidden_size;

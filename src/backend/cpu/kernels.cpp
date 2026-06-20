@@ -1,5 +1,5 @@
 #include <math.h>
-#include "../../../include/kernels.h"
+#include "kernels.h"
 
 #if defined(__ARM_NEON)
 #include <arm_neon.h>
@@ -201,28 +201,12 @@ void silu(Tensor<float>& xout, Tensor<float>& x){
     }
 }
 
-
-// Not sure if I will be using all of those
-float sum(Tensor<float>& x){
-    float r = 0.0f;
-    for (int i=0; i<x.numel; i++){
-        r += x.data[i];
-    }
-    return r;
-}
-
 void add(Tensor<float>& xout, Tensor<float>& x, Tensor<float>& y){
     for (int i = 0; i < x.numel; i++) {
         xout.data[i] = x.data[i] + y.data[i];
     }
 }
 
-
-void add(Tensor<float>& xout, Tensor<float>& x, float c){
-    for (int i = 0; i < x.numel; i++) {
-        xout.data[i] = x.data[i] + c;
-    }
-}
 
 void mul(Tensor<float>& xout, Tensor<float>& x, Tensor<float>& y){
     for (int i = 0; i < x.numel; i++) {
@@ -235,17 +219,4 @@ void mul(Tensor<float>& xout, Tensor<float>& x, float c) {
         xout.data[i] = x.data[i] * c;
     }
 }
-
-void pow(Tensor<float>& xout, Tensor<float>& x, int e){
-    for (int i=0; i<x.numel; i++){
-        xout.data[i] = pow(x.data[i], e);
-    }
-}
-
-void sqrt(Tensor<float>& xout, Tensor<float>& x){
-    for (int i=0; i<x.numel; i++){
-        xout.data[i] = sqrt(x.data[i]);
-    }
-}
-
 

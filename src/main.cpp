@@ -1,6 +1,6 @@
 #include <iostream>
-#include "../include/parameters.h"
-#include "../include/modules.h"
+#include "parameters.h"
+#include "modules.h"
 #include <random>
 #include <chrono>
 #include <cmath>
@@ -137,7 +137,6 @@ void run_perplexity(std::shared_ptr<Parameters> params, InferenceState& infer, c
     RotaryEmbedding::init_freq(infer, params->config);
     infer.pos = 0;
 
-    size_t vocab = params->config.vocab_size;
     double nll = 0.0;
     size_t count = 0;
     std::vector<double> per_token_nll;
@@ -145,18 +144,12 @@ void run_perplexity(std::shared_ptr<Parameters> params, InferenceState& infer, c
     for (size_t i = 0; i + 1 < tokens.size(); i++) {
         model.forward(infer, tokens[i]);
 
-        // Numerically stable log-softmax over the vocab.
-        float maxv = infer.logits.data[0];
-        for (size_t j = 1; j < vocab; j++) {
-            maxv = std::max(maxv, infer.logits.data[j]);
+        for (size_t j = 0; j < infer.logits.numel; j++) {
+            infer.probs.data[j] = infer.logits.data[j];
         }
-        double sumexp = 0.0;
-        for (size_t j = 0; j < vocab; j++) {
-            sumexp += std::exp((double)infer.logits.data[j] - maxv);
-        }
-        double log_z = (double)maxv + std::log(sumexp);
-        double logp = (double)infer.logits.data[tokens[i + 1]] - log_z;
+        softmax(infer.probs, infer.probs);
 
+        double logp = std::log(std::max((double)infer.probs.data[tokens[i + 1]], 1e-30));
         nll += -logp;
         per_token_nll.push_back(-logp);
         count++;

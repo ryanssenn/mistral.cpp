@@ -57,7 +57,5 @@ struct Tensor {
 
     Tensor reshape(std::vector<size_t> new_shape);
 
-    void print();
-
     float get(size_t i);
 };

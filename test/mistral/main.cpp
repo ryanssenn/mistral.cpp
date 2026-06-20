@@ -60,7 +60,7 @@ int main() {
     size_t name_w = 0;
     int matching = 0;
     for (const TestCase& t : tests) {
-        if (t.quant == quant) {
+        if (t.quant == quant || t.quant == "any") {
             name_w = std::max(name_w, t.name.size());
             matching++;
         }
@@ -88,7 +88,7 @@ int main() {
     auto suite_start = std::chrono::steady_clock::now();
 
     for (const TestCase& t : tests) {
-        if (t.quant != quant) {
+        if (t.quant != quant && t.quant != "any") {
             continue;
         }
         total++;

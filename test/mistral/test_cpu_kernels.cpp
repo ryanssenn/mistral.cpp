@@ -26,7 +26,7 @@ int test_rope(){
     return 0;
 }
 
-RegisterTest rope_reg("test rope", "f32", &test_rope);
+RegisterTest rope_reg("test rope", "any", &test_rope);
 
 
 int test_matmul(){
@@ -45,7 +45,7 @@ int test_matmul(){
     return 0;
 }
 
-RegisterTest matmul_reg("test matmul", "f32", &test_matmul);
+RegisterTest matmul_reg("test matmul", "any", &test_matmul);
 
 int test_row_matmul(){
     Tensor<float> w(arena, {1, 2,
@@ -65,7 +65,7 @@ int test_row_matmul(){
     return 0;
 }
 
-RegisterTest row_matmul_reg("test row matmul", "f32", &test_row_matmul);
+RegisterTest row_matmul_reg("test row matmul", "any", &test_row_matmul);
 
 
 int test_softmax(){
@@ -82,7 +82,7 @@ int test_softmax(){
     return 0;
 }
 
-RegisterTest softmaxl_reg("test softmax", "f32", &test_softmax);
+RegisterTest softmaxl_reg("test softmax", "any", &test_softmax);
 
 
 int test_silu(){
@@ -102,7 +102,7 @@ int test_silu(){
     return 0;
 }
 
-RegisterTest silu_reg("test silu", "f32", &test_silu);
+RegisterTest silu_reg("test silu", "any", &test_silu);
 
 
 

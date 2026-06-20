@@ -1,9 +1,4 @@
-//
-// Created by Ryan Senoune on 2025-08-23.
-//
-
-#ifndef MATH_OPS_H
-#define MATH_OPS_H
+#pragma once
 
 #include "tensor.h"
 #include <cmath>
@@ -17,15 +12,7 @@ void rope(Tensor<float>& xout, Tensor<float>& x, Tensor<float>& cos, Tensor<floa
 
 void silu(Tensor<float>& xout, Tensor<float>& x);
 
-float sum(Tensor<float>& x);
-
 void add(Tensor<float>& xout, Tensor<float>& x, Tensor<float>& y);
-void add(Tensor<float>& xout, Tensor<float>& x, float c);
 
 void mul(Tensor<float>& xout, Tensor<float>& x, Tensor<float>& y);
 void mul(Tensor<float>& xout, Tensor<float>& x, float c);
-
-void pow(Tensor<float>& xout, Tensor<float>& x, int e);
-void sqrt(Tensor<float>& xout, Tensor<float>& x);
-
-#endif // MATH_OPS_H

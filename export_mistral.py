@@ -4,44 +4,17 @@ import struct
 
 import safetensors
 import torch
-
 import argparse
 
 """
 Usage:
   python export_mistral.py --model_dir /path/to/Mistral-7B-v0.1 [--out mistral.mog] [--quant f32]
 
-Arguments:
-  --model_dir   Required. Path to the Hugging Face model directory.
-  --out         Optional. Output file path. Defaults to ./mistral.mog
-  --quant       Optional. Quantization mode. Defaults to int8. Accepts f32 or int8.
-                int8 quantizes MLP gate/up projections only; down_proj and attention stay f32.
-
-
-python export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ../mistral.mog
-
-python export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ../mistral.mog --quant f32
-
----------
-
-This script converts a Hugging Face Mistral model into one standardized binary file that can be fed into the inference engine.
-
-Inputs (from the downloaded model directory):
-  - config.json              : model hyperparameters
-  - tokenizer.json           : vocabulary
-  - model.safetensors.index.json + shard files : weights
-
-Output:
-  mistral.mog with layout:
-    MOG magic + version + header_size
-    binary header (architecture, config KV, tokenizer, tensor table)
-    padding to 64-byte alignment
-    payload: all tensors as continuous data with quantization scales
+Converts a Hugging Face Mistral checkpoint into a single .mog file.
 """
 
 MAGIC = b"MOG\x00"
 FORMAT_VERSION = 1
-FILE_PREFIX_SIZE = 16
 
 KV_STRING = 0
 KV_UINT32 = 1
@@ -91,85 +64,72 @@ def write_kv_string(buf, key, value):
     write_string(buf, value)
 
 
+def pad_to_64(offset):
+    r = offset % 64
+    return 0 if r == 0 else 64 - r
+
+
 def quantize(x: torch.Tensor, n_bits: int, group_size: int):
-    assert (x.numel() % group_size == 0)
-
+    assert x.numel() % group_size == 0
     x = x.reshape(-1, group_size).float()
-
     int_max = 2 ** (n_bits - 1) - 1
-
     scales = int_max / x.abs().max(dim=-1).values.unsqueeze(-1)
-
     quant = (x * scales).round().clamp(-int_max, int_max)
-
     return quant, scales
 
 
-def load_config():
-    config_path = os.path.join(IN_PATH, "config.json")
-
-    with open(config_path, "r") as f:
-        cfg = json.load(f)
-        return {
-            "hidden_size": cfg["hidden_size"],
-            "intermediate_size": cfg["intermediate_size"],
-            "n_layers": cfg["num_hidden_layers"],
-            "n_heads": cfg["num_attention_heads"],
-            "n_kv_heads": cfg["num_key_value_heads"],
-            "vocab_size": cfg["vocab_size"],
-            "max_position_embeddings": cfg["max_position_embeddings"],
-            "sliding_window": cfg["sliding_window"] if cfg["sliding_window"] is not None else 0,
-            "rope_theta": cfg["rope_theta"],
-            "norm_eps": cfg["rms_norm_eps"],
-            "quant": args.quant,
-        }
-
-
-def load_tokenizer():
-    tokenizer_path = os.path.join(IN_PATH, "tokenizer.json")
-
-    with open(tokenizer_path, "r") as f:
-        t = json.load(f)
-        return t["model"]["vocab"], t["model"]["merges"]
-
-
-def pad_to_64(offset):
-    r = offset % 64
-    if r == 0:
-        return 0
-
-    return 64 - r
-
-
-def should_quantize(tensor_name):
-    return args.quant != "f32" and any(
+def should_quantize(quant_mode, tensor_name):
+    return quant_mode != "f32" and any(
         key in tensor_name for key in ("mlp.gate_proj", "mlp.up_proj")
     )
 
 
-def load_tensor_map():
+def load_config(model_dir, quant_mode):
+    with open(os.path.join(model_dir, "config.json")) as fh:
+        cfg = json.load(fh)
+    return {
+        "hidden_size": cfg["hidden_size"],
+        "intermediate_size": cfg["intermediate_size"],
+        "n_layers": cfg["num_hidden_layers"],
+        "n_heads": cfg["num_attention_heads"],
+        "n_kv_heads": cfg["num_key_value_heads"],
+        "vocab_size": cfg["vocab_size"],
+        "max_position_embeddings": cfg["max_position_embeddings"],
+        "sliding_window": cfg["sliding_window"] if cfg["sliding_window"] is not None else 0,
+        "rope_theta": cfg["rope_theta"],
+        "norm_eps": cfg["rms_norm_eps"],
+        "quant": quant_mode,
+    }
+
+
+def load_tokenizer(model_dir):
+    with open(os.path.join(model_dir, "tokenizer.json")) as fh:
+        t = json.load(fh)
+    return t["model"]["vocab"], t["model"]["merges"]
+
+
+def load_tensor_map(model_dir, weight_map, quant_mode, data_size, group_size):
     tensors = {}
     start = 0
 
     for tensor_name in weight_map:
-        tensor_file_path = os.path.join(IN_PATH, weight_map[tensor_name])
+        tensor_file_path = os.path.join(model_dir, weight_map[tensor_name])
+        with safetensors.safe_open(tensor_file_path, framework="pt") as handle:
+            tensor = handle.get_tensor(tensor_name)
 
-        with safetensors.safe_open(tensor_file_path, framework="pt") as f:
-            tensor = f.get_tensor(tensor_name)
-
-            if should_quantize(tensor_name):
+            if should_quantize(quant_mode, tensor_name):
                 tensors[tensor_name] = {
                     "dtype": DTYPE_INT8,
                     "shape": list(tensor.shape)[:4],
                     "offset": start,
                 }
-                start += tensor.numel() * DATA_SIZE
+                start += tensor.numel() * data_size
                 start += pad_to_64(start)
 
-                scale_size = tensor.numel() // GROUP_SIZE
+                scale_size = tensor.numel() // group_size
                 tensors[tensor_name]["scale_offset"] = start
                 tensors[tensor_name]["scale_size"] = scale_size
-                start += tensor.numel() // GROUP_SIZE * 4
+                start += scale_size * 4
                 start += pad_to_64(start)
             else:
                 tensors[tensor_name] = {
@@ -182,14 +142,13 @@ def load_tensor_map():
                 start += tensor.numel() * 4
                 start += pad_to_64(start)
 
-    return tensors
+    return tensors, start
 
 
-def build_header_blob(config, vocab, merges, tensors):
+def build_header_blob(config, vocab, merges, tensors, weight_map):
     buf = bytearray()
 
     write_string(buf, "mistral")
-
     write_u32(buf, 11)
     write_kv_uint32(buf, "hidden_size", config["hidden_size"])
     write_kv_uint32(buf, "intermediate_size", config["intermediate_size"])
@@ -230,161 +189,85 @@ def build_header_blob(config, vocab, merges, tensors):
 
 
 def write_tensor(out, tensor, base_offset, tensor_offset):
-    tensor_bytes = tensor.numpy().tobytes()
     out.seek(base_offset + tensor_offset, 0)
-    out.write(tensor_bytes)
+    out.write(tensor.numpy().tobytes())
 
 
-def write_binary(config, vocab, merges, tensors, header_blob):
-    with open(OUT_PATH, "wb") as out:
+def write_binary(model_dir, out_path, weight_map, tensors, header_blob, quant_mode, data_size, data_type, group_size):
+    with open(out_path, "wb") as out:
         out.write(MAGIC)
         out.write(struct.pack("<I", FORMAT_VERSION))
         out.write(struct.pack("<Q", len(header_blob)))
         out.write(header_blob)
 
-        padding_size = pad_to_64(out.tell())
-        out.seek(padding_size, 1)
+        out.seek(pad_to_64(out.tell()), 1)
         base_offset = out.tell()
 
-        total = len(tensors)
-        i = 0
-        bar_width = 40
-
         for tensor_name in weight_map:
-            i += 1
-            print("[" + "#" * int(bar_width * i / total) + "-" * (bar_width - int(bar_width * i / total)) + f"] {int(i / total * 100)}%", end="\r")
-
-            tensor_file_path = os.path.join(IN_PATH, weight_map[tensor_name])
-            with safetensors.safe_open(tensor_file_path, framework="pt") as f:
-                tensor = f.get_tensor(tensor_name)
+            tensor_file_path = os.path.join(model_dir, weight_map[tensor_name])
+            with safetensors.safe_open(tensor_file_path, framework="pt") as handle:
+                tensor = handle.get_tensor(tensor_name)
                 scales = None
 
-                if "_proj" in tensor_name and tensors[tensor_name]["dtype"] != DTYPE_F32:
-                    tensor, scales = quantize(tensor, DATA_SIZE * 8, GROUP_SIZE)
-                    tensor = tensor.to(DATA_TYPE)
+                if should_quantize(quant_mode, tensor_name):
+                    tensor, scales = quantize(tensor, data_size * 8, group_size)
+                    tensor = tensor.to(data_type)
                     scales = scales.to(torch.float32)
                 else:
                     tensor = tensor.to(torch.float32)
 
                 write_tensor(out, tensor, base_offset, tensors[tensor_name]["offset"])
-
                 if scales is not None:
                     write_tensor(out, scales, base_offset, tensors[tensor_name]["scale_offset"])
 
+        payload_size = out.tell() - base_offset
 
-def verify_header(path, expected_tensors):
-    with open(path, "rb") as f:
-        magic = f.read(4)
-        if magic != MAGIC:
-            raise ValueError("missing MOG magic")
-
-        version = struct.unpack("<I", f.read(4))[0]
-        if version != FORMAT_VERSION:
-            raise ValueError(f"unexpected version {version}")
-
-        header_size = struct.unpack("<Q", f.read(8))[0]
-        header_blob = f.read(header_size)
-        if len(header_blob) != header_size:
-            raise ValueError("truncated header")
-
-        payload_base = f.tell() + pad_to_64(f.tell())
-        f.seek(payload_base)
-        payload_size = os.path.getsize(path) - payload_base
-
-        pos = 0
-        arch_len = struct.unpack_from("<I", header_blob, pos)[0]
-        pos += 4 + arch_len
-
-        kv_count = struct.unpack_from("<I", header_blob, pos)[0]
-        pos += 4
-        for _ in range(kv_count):
-            key_len = struct.unpack_from("<I", header_blob, pos)[0]
-            pos += 4 + key_len
-            kv_type = header_blob[pos]
-            pos += 1
-            if kv_type == KV_STRING:
-                val_len = struct.unpack_from("<I", header_blob, pos)[0]
-                pos += 4 + val_len
-            elif kv_type == KV_UINT32:
-                pos += 4
-            elif kv_type == KV_FLOAT32:
-                pos += 4
-
-        vocab_count = struct.unpack_from("<I", header_blob, pos)[0]
-        pos += 4
-        for _ in range(vocab_count):
-            token_len = struct.unpack_from("<I", header_blob, pos)[0]
-            pos += 4 + token_len + 4
-
-        merge_count = struct.unpack_from("<I", header_blob, pos)[0]
-        pos += 4
-        for _ in range(merge_count):
-            merge_len = struct.unpack_from("<I", header_blob, pos)[0]
-            pos += 4 + merge_len
-
-        tensor_count = struct.unpack_from("<I", header_blob, pos)[0]
-        pos += 4
-        if tensor_count != len(expected_tensors):
-            raise ValueError(f"tensor count mismatch: {tensor_count} vs {len(expected_tensors)}")
-
-        max_end = 0
-        for _ in range(tensor_count):
-            name_len = struct.unpack_from("<I", header_blob, pos)[0]
-            pos += 4 + name_len
-            dtype = header_blob[pos]
-            ndim = header_blob[pos + 1]
-            pos += 2
-            dims = struct.unpack_from("<IIII", header_blob, pos)
-            pos += 16
-            offset, scale_offset, scale_size = struct.unpack_from("<QQI", header_blob, pos)
-            pos += 20
-            shape = [dims[i] for i in range(ndim)]
-            if dtype == DTYPE_F32:
-                nbytes = 4
-                for d in shape:
-                    nbytes *= d
-                max_end = max(max_end, offset + nbytes)
-            else:
-                nbytes = 1
-                for d in shape:
-                    nbytes *= d
-                max_end = max(max_end, offset + nbytes, scale_offset + scale_size * 4)
-
-        if max_end > payload_size:
-            raise ValueError(f"payload too small: need {max_end}, have {payload_size}")
+    expected_payload = max(
+        info["offset"] + (
+            int(torch.prod(torch.tensor(info["shape"])).item()) * (1 if info["dtype"] == DTYPE_INT8 else 4)
+        )
+        for info in tensors.values()
+    )
+    if payload_size < expected_payload:
+        raise ValueError(f"payload too small: wrote {payload_size}, need at least {expected_payload}")
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--model_dir", required=True)
-parser.add_argument("--out", default="./mistral.mog")
-parser.add_argument("--quant", default="int8", choices=["f32", "int8"])
-args = parser.parse_args()
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_dir", required=True)
+    parser.add_argument("--out", default="./mistral.mog")
+    parser.add_argument("--quant", default="int8", choices=["f32", "int8"])
+    args = parser.parse_args()
 
-IN_PATH = args.model_dir
-OUT_PATH = args.out
-DATA_SIZE = 4
-DATA_TYPE = torch.float32
-GROUP_SIZE = 64
+    data_size = 1 if args.quant == "int8" else 4
+    data_type = torch.int8 if args.quant == "int8" else torch.float32
+    group_size = 64
 
-if args.quant == "int8":
-    DATA_SIZE = 1
-    DATA_TYPE = torch.int8
+    with open(os.path.join(args.model_dir, "model.safetensors.index.json")) as fh:
+        weight_map = json.load(fh)["weight_map"]
 
-tensor_index_path = os.path.join(IN_PATH, "model.safetensors.index.json")
-with open(tensor_index_path, "r") as f:
-    index = json.load(f)
-    weight_map = index["weight_map"]
+    print(f"Exporting {args.model_dir} -> {args.out} ({args.quant})")
 
-print("\033[1m\033[4mModel Export\033[0m\n"
-      f"\033[1mModel Directory:\033[0m {IN_PATH}\n"
-      f"\033[1mOutput File:\033[0m     {OUT_PATH}\n"
-      f"\033[1mQuantization:\033[0m    {args.quant}\n")
+    config = load_config(args.model_dir, args.quant)
+    vocab, merges = load_tokenizer(args.model_dir)
+    tensors, _ = load_tensor_map(
+        args.model_dir, weight_map, args.quant, data_size, group_size
+    )
+    header_blob = build_header_blob(config, vocab, merges, tensors, weight_map)
+    write_binary(
+        args.model_dir,
+        args.out,
+        weight_map,
+        tensors,
+        header_blob,
+        args.quant,
+        data_size,
+        data_type,
+        group_size,
+    )
 
-config = load_config()
-tensors = load_tensor_map()
-vocab, merges = load_tokenizer()
-header_blob = build_header_blob(config, vocab, merges, tensors)
-write_binary(config, vocab, merges, tensors, header_blob)
-verify_header(OUT_PATH, tensors)
+    print("Completed")
 
-print("\nCompleted")
+
+if __name__ == "__main__":
+    main()

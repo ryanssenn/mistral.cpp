@@ -1,5 +1,5 @@
 #include "setup/context.h"
-#include "../../include/model_format.h"
+#include "model_format.h"
 
 #include <cstring>
 #include <fstream>

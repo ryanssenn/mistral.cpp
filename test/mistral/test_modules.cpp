@@ -28,7 +28,6 @@ int test_attention() {
     std::shared_ptr<Parameters> params = get_params();
     infer.pos = 0;
 
-    auto& w = params->layer_weights[0];
     Attention attn(params->get_tensor<T>(0, "self_attn.q_proj.weight"), params->get_tensor<T>(0, "self_attn.k_proj.weight"), params->get_tensor<T>(0, "self_attn.v_proj.weight"), params->get_tensor<T>(0, "self_attn.o_proj.weight"), 0);
 
     // Test over sequence of 3 tokens
@@ -51,13 +50,6 @@ int test_attention() {
             return 1;
         }
 
-        /*
-        if (!equals(infer.scores.reshape({infer.scores.shape[0], infer.pos+1}), expected.at("attn_w" + std::to_string(i)))){
-            std::cout << "Attention weights mismatch at token " + std::to_string(i)  << std::endl;
-            return 1;
-        }
-        */
-
         if (!equals(infer.hidden_state, expected.at("attn_o" + std::to_string(i)))){
             std::cout << "Attention result mismatch at token " + std::to_string(i)  << std::endl;
             return 1;
@@ -68,9 +60,7 @@ int test_attention() {
     return 0;
 }
 
-RegisterTest attention_reg("test attention", "f32", &test_attention<float>);
-//RegisterTest attention_reg_q("test attention", "int8", &test_attention<int8_t>);
-
+RegisterTest attention_reg("test attention", "any", &test_attention<float>);
 
 template <typename T>
 int test_mlp(){
@@ -123,7 +113,7 @@ int test_kv_cache() {
     return 0;
 }
 
-RegisterTest kv_cache_reg("test kv cache", "f32", &test_kv_cache);
+RegisterTest kv_cache_reg("test kv cache", "any", &test_kv_cache);
 
 int test_embedding() {
     std::shared_ptr<Parameters> params = get_params();
@@ -160,7 +150,7 @@ int test_embedding() {
     return 0;
 }
 
-RegisterTest embedding_reg("test embedding", "f32", &test_embedding);
+RegisterTest embedding_reg("test embedding", "any", &test_embedding);
 
 int test_rotary_embedding_inv_freq(){
     std::shared_ptr<Parameters> params = get_params();
@@ -175,7 +165,7 @@ int test_rotary_embedding_inv_freq(){
     return 0;
 }
 
-RegisterTest rotary_embedding_inv_freq_reg("test rotary embedding inv freq", "f32", &test_rotary_embedding_inv_freq);
+RegisterTest rotary_embedding_inv_freq_reg("test rotary embedding inv freq", "any", &test_rotary_embedding_inv_freq);
 
 int test_rotary_embedding(){
     std::shared_ptr<Parameters> params = get_params();
@@ -211,7 +201,7 @@ int test_rotary_embedding(){
     return 0;
 }
 
-RegisterTest rotary_embeddingg("test rotary embedding", "f32", &test_rotary_embedding);
+RegisterTest rotary_embeddingg("test rotary embedding", "any", &test_rotary_embedding);
 
 
 
@@ -231,7 +221,7 @@ int test_rmsnorm() {
     return 0;
 }
 
-RegisterTest rmsnorm_reg("test rmsnorm", "f32", &test_rmsnorm);
+RegisterTest rmsnorm_reg("test rmsnorm", "any", &test_rmsnorm);
 
 
 int test_lm_head() {
@@ -258,6 +248,6 @@ int test_lm_head() {
 }
 
 
-RegisterTest lm_head_reg("test lm head", "f32", &test_lm_head);
+RegisterTest lm_head_reg("test lm head", "any", &test_lm_head);
 
 

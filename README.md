@@ -42,7 +42,7 @@ cmake --build build
 
 Use `--temp 0` for greedy decoding.
 
-To export your own `.mog` from a Hugging Face checkpoint, see `export_mistral.py`.
+To export your own `.mog` from a Hugging Face checkpoint, use [qpack](https://github.com/ryanssenn/qpack).
 
 ## Testing
 

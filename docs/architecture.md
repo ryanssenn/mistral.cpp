@@ -20,13 +20,13 @@ For the on-disk format, see [model-binary.md](model-binary.md). For the f16 comp
 
 ## 1. Load the model
 
-Hugging Face checkpoints are a folder of config, tokenizer, and sharded weights. `export_mistral.py` packs them into one **`.mog`** file.
+Hugging Face checkpoints are a folder of config, tokenizer, and sharded weights. [qpack](https://github.com/ryanssenn/qpack) packs them into one **`.mog`** file.
 
 At startup, `Parameters::load_parameters` memory-maps that file and exposes each weight as a strided `Tensor` view. The ~10 GB Q8F16 payload is not copied into heap RAM.
 
 | Step | Where |
 |------|-------|
-| HF → `.mog` | `export_mistral.py` |
+| HF → `.mog` | [qpack](https://github.com/ryanssenn/qpack) |
 | mmap + tensor index | `src/loader/parameters.cpp` |
 | Tensor views | `src/common/tensor.cpp` |
 

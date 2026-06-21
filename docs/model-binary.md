@@ -2,11 +2,13 @@
 
 MOG (**M**odel **O**bject **G**raph) is the single-file format this engine loads at startup. One `.mog` file holds everything the runtime needs: model config, tokenizer, a tensor index, and all weight bytes.
 
-`export_mistral.py` builds it from a Hugging Face checkpoint; `Parameters::load_parameters` in C++ memory-maps it and exposes tensor views into the payload.
+[qpack](https://github.com/ryanssenn/qpack) builds it from a Hugging Face checkpoint; `Parameters::load_parameters` in C++ memory-maps it and exposes tensor views into the payload.
 
 ```bash
-python3 export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ./mistral.mog
+python export_mistral.py --model_dir ../Mistral-7B-v0.1 --out ./mistral.mog
 ```
+
+Run from a [qpack](https://github.com/ryanssenn/qpack) checkout.
 
 **Inputs from HF:** `config.json`, `tokenizer.json`, `model.safetensors.index.json` + shard files.
 
@@ -193,7 +195,7 @@ HF tokenizer.json     →  vocab + merges
 HF safetensors shards →  tensor table (offsets) + payload bytes
 ```
 
-Steps in `export_mistral.py`:
+Steps in qpack's `export_mistral.py`:
 
 1. Walk `weight_map` and assign each tensor an offset, dtype, and (for int8) scale location.
 2. Build the header blob (architecture → config → tokenizer → tensor table).

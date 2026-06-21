@@ -21,8 +21,8 @@ jobs:
       - name: Get HF model revision
         id: hf-rev
         run: |
-          python3 -m pip install -q huggingface_hub
-          sha=$(python3 -c "from huggingface_hub import HfApi; print(HfApi().repo_info('${{ env.HF_MOG_REPO }}').sha)")
+          sha=$(curl -sf "https://huggingface.co/api/models/${{ env.HF_MOG_REPO }}" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['sha'])")
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Restore model cache

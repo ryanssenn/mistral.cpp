@@ -1,6 +1,7 @@
 #pragma once
 #include "tensor.h"
 #include "binary_reader.h"
+#include <unordered_map>
 
 struct Tokenizer {
     // Vocab lookup tables

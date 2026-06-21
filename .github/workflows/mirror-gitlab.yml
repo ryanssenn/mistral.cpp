@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Push main to GitLab
         env:
@@ -22,4 +24,5 @@ jobs:
         run: |
           git remote add gitlab \
             "https://oauth2:${GITLAB_TOKEN}@gitlab.com/ryansen/qmog-cpp.git"
-          git push gitlab HEAD:main
+          git fetch gitlab main
+          git push gitlab main:main

@@ -1,10 +1,10 @@
 # qmog.cpp
 
+**Experimental project under active development**. Current support is limited to the Mistral 7B base model running on a CPU backend. Metal acceleration, additional architectures, and performance improvements are ongoing.
+
 A compact C++ inference engine optimized for Apple platforms.
 
 Load a single `.mog` (Model Object Graph) file and run inference locally. No runtime dependencies. A small C++ codebase focused on readability and simplicity.
-
-**Experimental project under active development**. Current support is limited to the Mistral 7B base model running on a CPU backend. Metal acceleration, additional architectures, and performance improvements are ongoing.
 
 <img width="800" height="245" alt="qmog_demo" src="https://github.com/user-attachments/assets/0d7804dc-bbb6-4970-8a1f-35ab30add8cf" />
 
@@ -20,7 +20,7 @@ Benchmarks on M4 MacBook, Q8F16 (~10 GB).
 
 ## Run it
 
-Built and tested on macOS. Linux builds are supported but not the primary target.
+Built and tested on macOS. Linux is not supported.
 
 1. Clone this repo:
 

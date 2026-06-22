@@ -4,9 +4,8 @@
 #include "fp16.h"
 #include <cmath>
 
-void matmul(Tensor<float>& xout, Tensor<float>& w, Tensor<float>& x);
-void matmul(Tensor<float>& xout, Tensor<int8_t>& w, Tensor<float>& x);
-void matmul(Tensor<float>& xout, Tensor<fp16_t>& w, Tensor<float>& x);
+template <typename WeightT, typename ActivationT, typename AccumT>
+void matmul(Tensor<AccumT>& xout, Tensor<WeightT>& w, Tensor<ActivationT>& x);
 void row_matmul(Tensor<float>& xout, Tensor<float>& x, Tensor<float>& w);
 
 void softmax(Tensor<float>& xout, Tensor<float>& x);

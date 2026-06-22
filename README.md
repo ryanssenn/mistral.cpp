@@ -29,20 +29,20 @@ git clone https://github.com/ryanssenn/qmog.cpp.git
 cd qmog.cpp
 ```
 
-1. Build:
+2. Build:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-1. Pull the `.mog` model:
+3. Pull the `.mog` model:
 
 ```bash
 hf download QmogAI/Mistral-7B-Q8F16 mistral-7B-Q8F16.mog --local-dir .
 ```
 
-1. Run:
+4. Run:
 
 ```bash
 ./build/qmog-cli mistral-7B-Q8F16.mog "Paris is the capital of" --temp 0.7

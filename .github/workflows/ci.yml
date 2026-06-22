@@ -65,4 +65,8 @@ jobs:
           cmake --build build
 
       - name: Unit tests
-        run: ./build/test_exec
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          subprocess.run(["./build/test_exec"], timeout=120, check=True)
+          PY

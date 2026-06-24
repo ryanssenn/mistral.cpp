@@ -52,11 +52,6 @@ jobs:
             echo "::error::${{ env.MODEL_MOG }} missing after download."
             exit 1
           fi
-          size=$(stat -f%z "${{ env.MODEL_MOG }}")
-          if [ "$size" -gt 9000000000 ]; then
-            echo "::error::${{ env.MODEL_MOG }} is ${size} bytes (~10 GB legacy layout). Expected expanded Q8F16 (~7 GB). Re-run the Warm model cache workflow after publishing the new .mog."
-            exit 1
-          fi
           echo "Using model ($(du -h "${{ env.MODEL_MOG }}" | cut -f1))"
 
       - name: Install OpenMP

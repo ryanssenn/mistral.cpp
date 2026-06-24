@@ -1,12 +1,12 @@
 #include "setup/context.h"
 #include "fp16.h"
 
-template <typename TGateUp, typename TLinear>
+template <typename TMatmul, typename TAux>
 int test_layer() {
     std::shared_ptr<Parameters> params = get_params();
     infer.pos = 0;
 
-    Layer<TGateUp, TLinear> layer(0, params);
+    Layer<TMatmul, TAux> layer(0, params);
 
     for (int i=1;i<4;i++) {
         infer.hidden_state.copy_from(expected.at("layer_h" + std::to_string(i)));
@@ -21,12 +21,12 @@ int test_layer() {
     return 0;
 }
 
-template <typename TLinear>
+template <typename TMatmul>
 int test_attention() {
     std::shared_ptr<Parameters> params = get_params();
     infer.pos = 0;
 
-    Attention<TLinear> attn(params->get_tensor<TLinear>(0, "self_attn.q_proj.weight"), params->get_tensor<TLinear>(0, "self_attn.k_proj.weight"), params->get_tensor<TLinear>(0, "self_attn.v_proj.weight"), params->get_tensor<TLinear>(0, "self_attn.o_proj.weight"), 0);
+    Attention<TMatmul> attn(params->get_tensor<TMatmul>(0, "self_attn.q_proj.weight"), params->get_tensor<TMatmul>(0, "self_attn.k_proj.weight"), params->get_tensor<TMatmul>(0, "self_attn.v_proj.weight"), params->get_tensor<TMatmul>(0, "self_attn.o_proj.weight"), 0);
 
     for (int i=1;i<4;i++){
         infer.hidden_state.copy_from(expected.at("attn_h" + std::to_string(i)));
@@ -59,7 +59,10 @@ int test_attention() {
 
 static int test_attention_dispatch() {
     auto params = get_params();
-    if (params->uses_f16_linear_weights()) {
+    if (is_q8f16(params->config.quant)) {
+        return test_attention<int8_t>();
+    }
+    if (params->uses_f16_aux_weights()) {
         return test_attention<fp16_t>();
     }
     return test_attention<float>();
@@ -67,13 +70,13 @@ static int test_attention_dispatch() {
 
 RegisterTest attention_reg("test attention", "any", &test_attention_dispatch);
 
-template <typename TGateUp, typename TLinear>
+template <typename TMatmul>
 int test_mlp(){
     std::shared_ptr<Parameters> params = get_params();
 
-    MLP<TGateUp, TLinear> mlp(params->get_tensor<TLinear>(0, "mlp.down_proj.weight"),
-               params->get_tensor<TGateUp>(0, "mlp.gate_proj.weight"),
-               params->get_tensor<TGateUp>(0, "mlp.up_proj.weight"));
+    MLP<TMatmul> mlp(params->get_tensor<TMatmul>(0, "mlp.down_proj.weight"),
+               params->get_tensor<TMatmul>(0, "mlp.gate_proj.weight"),
+               params->get_tensor<TMatmul>(0, "mlp.up_proj.weight"));
 
     infer.hidden_state.copy_from(expected.at("mlp_h"));
 
@@ -88,11 +91,7 @@ int test_mlp(){
 }
 
 static int test_mlp_int8() {
-    auto params = get_params();
-    if (params->uses_f16_linear_weights()) {
-        return test_mlp<int8_t, fp16_t>();
-    }
-    return test_mlp<int8_t, float>();
+    return test_mlp<int8_t>();
 }
 RegisterTest mlp_feedforward_reg_q("test attention feedforward mlp", "Q8F16", &test_mlp_int8);
 
@@ -135,7 +134,7 @@ RegisterTest kv_cache_reg("test kv cache", "any", &test_kv_cache);
 static int test_embedding_dispatch() {
     std::shared_ptr<Parameters> params = get_params();
 
-    if (params->uses_f16_linear_weights()) {
+    if (params->uses_f16_aux_weights()) {
         Embedding<fp16_t> emb(params->get_tensor<fp16_t>(-1, "model.embed_tokens.weight"));
         size_t token_id = 0;
         emb.forward(infer, token_id);
@@ -261,7 +260,7 @@ RegisterTest rmsnorm_reg("test rmsnorm", "any", &test_rmsnorm);
 static int test_lm_head_dispatch() {
     std::shared_ptr<Parameters> params = get_params();
 
-    if (params->uses_f16_linear_weights()) {
+    if (params->uses_f16_aux_weights()) {
         LMHead<fp16_t> l(params);
         infer.hidden_state.copy_from(expected.at("lmhead_x"));
         l.forward(infer);

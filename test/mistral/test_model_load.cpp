@@ -106,11 +106,17 @@ bool layer_tensor_wants_int8(const std::string& name, const std::string& quant) 
     if (!is_q8f16(quant)) {
         return false;
     }
-    return name == "mlp.gate_proj.weight" || name == "mlp.up_proj.weight";
+    return name == "mlp.gate_proj.weight"
+        || name == "mlp.up_proj.weight"
+        || name == "mlp.down_proj.weight"
+        || name == "self_attn.q_proj.weight"
+        || name == "self_attn.k_proj.weight"
+        || name == "self_attn.v_proj.weight"
+        || name == "self_attn.o_proj.weight";
 }
 
-bool layer_tensor_wants_f16(const std::string& name, const std::string& quant, bool f16_linear) {
-    if (!is_q8f16(quant) || !f16_linear) {
+bool layer_tensor_wants_f16(const std::string& name, const std::string& quant, bool f16_aux) {
+    if (!is_q8f16(quant) || !f16_aux) {
         return false;
     }
     return !layer_tensor_wants_int8(name, quant);
@@ -279,7 +285,7 @@ int test_mog_config() {
 int test_mog_tensor_inventory() {
     const std::shared_ptr<Parameters> params = get_params();
     const std::string& quant = params->config.quant;
-    const bool f16_linear = params->uses_f16_linear_weights();
+    const bool f16_aux = params->uses_f16_aux_weights();
 
     if (!expect_eq("global tensor count", params->global_weights.size(), size_t{3})) {
         return 1;
@@ -314,7 +320,7 @@ int test_mog_tensor_inventory() {
             }
 
             const bool want_int8 = layer_tensor_wants_int8(spec.name, quant);
-            const bool want_f16 = layer_tensor_wants_f16(spec.name, quant, f16_linear);
+            const bool want_f16 = layer_tensor_wants_f16(spec.name, quant, f16_aux);
             if (is_int8_tensor(v) != want_int8) {
                 std::cerr << spec.name << " dtype mismatch at layer " << layer
                           << ": expected " << (want_int8 ? "int8" : (want_f16 ? "f16" : "float")) << "\n";
@@ -351,14 +357,14 @@ int test_mog_tensor_inventory() {
             std::cerr << spec.name << " should not be int8\n";
             return 1;
         }
-        if (is_q8f16(quant) && f16_linear && !is_fp16_tensor(v)) {
+        if (is_q8f16(quant) && f16_aux && !is_fp16_tensor(v)) {
             std::cerr << spec.name << " should be f16\n";
             return 1;
         }
     }
 
-    if (f16_linear) {
-        (void)params->get_tensor<fp16_t>(0, "self_attn.q_proj.weight");
+    if (f16_aux) {
+        (void)params->get_tensor<int8_t>(0, "self_attn.q_proj.weight");
         (void)params->get_tensor<fp16_t>(-1, "lm_head.weight");
     } else {
         (void)params->get_tensor<float>(0, "self_attn.q_proj.weight");

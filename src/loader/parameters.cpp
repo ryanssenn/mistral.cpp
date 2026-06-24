@@ -87,13 +87,9 @@ void Parameters::load_tensor(std::unordered_map<std::string, WeightTensor>& m, c
     }
 }
 
-bool Parameters::uses_f16_linear_weights() const {
-    if (layer_weights.empty()) {
-        return false;
-    }
-    const auto& weights = layer_weights[0];
-    auto it = weights.find("self_attn.q_proj.weight");
-    if (it == weights.end()) {
+bool Parameters::uses_f16_aux_weights() const {
+    auto it = global_weights.find("model.embed_tokens.weight");
+    if (it == global_weights.end()) {
         return false;
     }
     return std::holds_alternative<Tensor<fp16_t>>(it->second);

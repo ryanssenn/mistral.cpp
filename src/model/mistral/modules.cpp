@@ -1,9 +1,9 @@
 #include "modules.h"
 #include <iostream>
 
-template <typename TLinear>
-void Embedding<TLinear>::forward(InferenceState& infer, size_t token_id){
-    Tensor<TLinear> row = table.at({token_id});
+template <typename TAux>
+void Embedding<TAux>::forward(InferenceState& infer, size_t token_id){
+    Tensor<TAux> row = table.at({token_id});
     for (size_t i = 0; i < embedding_dim; i++) {
         infer.hidden_state.data[i] = row.get(i);
     }
@@ -31,8 +31,8 @@ void RotaryEmbedding::forward(InferenceState& infer){
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L195
 // x*g / sqrt(sum(x^2) + e)
-template <typename TLinear>
-void RMSNorm<TLinear>::forward(InferenceState& infer) {
+template <typename TAux>
+void RMSNorm<TAux>::forward(InferenceState& infer) {
     float squares = 0;
 
     for(int i =0; i<infer.hidden_state.numel; i++){
@@ -49,8 +49,8 @@ void RMSNorm<TLinear>::forward(InferenceState& infer) {
 }
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L140
-template <typename TLinear>
-void Attention<TLinear>::forward(InferenceState &infer) {
+template <typename TMatmul>
+void Attention<TMatmul>::forward(InferenceState &infer) {
     matmul(infer.q_state, q_proj, infer.hidden_state);
     matmul(infer.k_state, k_proj, infer.hidden_state);
     matmul(infer.v_state, v_proj, infer.hidden_state);
@@ -81,8 +81,8 @@ void Attention<TLinear>::forward(InferenceState &infer) {
     matmul(infer.hidden_state, o_proj, infer.context);
 }
 
-template <typename TGateUp, typename TLinear>
-void MLP<TGateUp, TLinear>::forward(InferenceState &infer) {
+template <typename TMatmul>
+void MLP<TMatmul>::forward(InferenceState &infer) {
     matmul(infer.mlp_gate, gate_proj, infer.hidden_state);
 
     silu(infer.mlp_gate, infer.mlp_gate);
@@ -94,8 +94,8 @@ void MLP<TGateUp, TLinear>::forward(InferenceState &infer) {
     matmul(infer.hidden_state, down_proj, infer.mlp_gate);
 }
 
-template <typename TGateUp, typename TLinear>
-void Layer<TGateUp, TLinear>::forward(InferenceState &infer){
+template <typename TMatmul, typename TAux>
+void Layer<TMatmul, TAux>::forward(InferenceState &infer){
     infer.residual.copy_from(infer.hidden_state);
 
     input_norm.forward(infer);
@@ -113,13 +113,13 @@ void Layer<TGateUp, TLinear>::forward(InferenceState &infer){
     add(infer.hidden_state, infer.hidden_state, infer.residual);
 }
 
-template <typename TLinear>
-void LMHead<TLinear>::forward(InferenceState &infer) {
+template <typename TAux>
+void LMHead<TAux>::forward(InferenceState &infer) {
     matmul(infer.logits, lm_head, infer.hidden_state);
 }
 
-template <typename TGateUp, typename TLinear>
-void Model<TGateUp, TLinear>::forward(InferenceState &infer, size_t token_id) {
+template <typename TMatmul, typename TAux>
+void Model<TMatmul, TAux>::forward(InferenceState &infer, size_t token_id) {
     embedding.forward(infer, token_id);
 
     for (auto& layer : layers) {
@@ -133,7 +133,7 @@ void Model<TGateUp, TLinear>::forward(InferenceState &infer, size_t token_id) {
     infer.pos++;
 }
 
-template void MLP<float, float>::forward(InferenceState &);
+template void MLP<float>::forward(InferenceState &);
 template void Layer<float, float>::forward(InferenceState &);
 template void Model<float, float>::forward(InferenceState &, size_t);
 template void Embedding<float>::forward(InferenceState&, size_t);
@@ -141,11 +141,11 @@ template void RMSNorm<float>::forward(InferenceState&);
 template void LMHead<float>::forward(InferenceState&);
 template void Attention<float>::forward(InferenceState&);
 
-template void MLP<int8_t, float>::forward(InferenceState &);
+template void MLP<int8_t>::forward(InferenceState &);
 template void Layer<int8_t, float>::forward(InferenceState &);
 template void Model<int8_t, float>::forward(InferenceState &, size_t);
+template void Attention<int8_t>::forward(InferenceState&);
 
-template void MLP<int8_t, fp16_t>::forward(InferenceState &);
 template void Layer<int8_t, fp16_t>::forward(InferenceState &);
 template void Model<int8_t, fp16_t>::forward(InferenceState &, size_t);
 template void Embedding<fp16_t>::forward(InferenceState&, size_t);

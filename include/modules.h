@@ -4,12 +4,12 @@
 
 
 // https://docs.pytorch.org/docs/stable/generated/torch.nn.Embedding.html
-template <typename TLinear>
+template <typename TAux>
 struct Embedding {
-    Tensor<TLinear> table;
+    Tensor<TAux> table;
     size_t num_embeddings;
     size_t embedding_dim;
-    Embedding(const Tensor<TLinear>& table) : table(table), num_embeddings(table.shape[0]), embedding_dim(table.shape[1]) {}
+    Embedding(const Tensor<TAux>& table) : table(table), num_embeddings(table.shape[0]), embedding_dim(table.shape[1]) {}
     void forward(InferenceState& infer, size_t token_id);
 };
 
@@ -20,29 +20,29 @@ struct RotaryEmbedding {
 };
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L58
-template <typename TLinear>
+template <typename TAux>
 struct RMSNorm {
-    Tensor<TLinear> g;
+    Tensor<TAux> g;
     float e = 1e-5f;
 
-    RMSNorm(const Tensor<TLinear>& g) : g(g) {}
+    RMSNorm(const Tensor<TAux>& g) : g(g) {}
     void forward(InferenceState& infer);
 };
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L123
-template <typename TLinear>
+template <typename TMatmul>
 struct Attention {
-    Tensor<TLinear> q_proj;
-    Tensor<TLinear> k_proj;
-    Tensor<TLinear> v_proj;
-    Tensor<TLinear> o_proj;
+    Tensor<TMatmul> q_proj;
+    Tensor<TMatmul> k_proj;
+    Tensor<TMatmul> v_proj;
+    Tensor<TMatmul> o_proj;
 
     size_t layer;
 
-    Attention(const Tensor<TLinear>& q_proj,
-              const Tensor<TLinear>& k_proj,
-              const Tensor<TLinear>& v_proj,
-              const Tensor<TLinear>& o_proj,
+    Attention(const Tensor<TMatmul>& q_proj,
+              const Tensor<TMatmul>& k_proj,
+              const Tensor<TMatmul>& v_proj,
+              const Tensor<TMatmul>& o_proj,
               size_t layer)
             : q_proj(q_proj),
               k_proj(k_proj),
@@ -55,13 +55,13 @@ struct Attention {
 
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L35
-template <typename TGateUp, typename TLinear>
+template <typename TMatmul>
 struct MLP {
-    Tensor<TLinear> down_proj;
-    Tensor<TGateUp> gate_proj;
-    Tensor<TGateUp> up_proj;
+    Tensor<TMatmul> down_proj;
+    Tensor<TMatmul> gate_proj;
+    Tensor<TMatmul> up_proj;
 
-    MLP(const Tensor<TLinear>& down_proj, const Tensor<TGateUp>& gate_proj, const Tensor<TGateUp>& up_proj)
+    MLP(const Tensor<TMatmul>& down_proj, const Tensor<TMatmul>& gate_proj, const Tensor<TMatmul>& up_proj)
         : down_proj(down_proj), gate_proj(gate_proj), up_proj(up_proj) {}
 
     void forward(InferenceState& infer);
@@ -69,28 +69,28 @@ struct MLP {
 
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L206
-template <typename TGateUp, typename TLinear>
+template <typename TMatmul, typename TAux>
 struct Layer {
     int i;
-    RMSNorm<TLinear> input_norm;
-    RMSNorm<TLinear> output_norm;
-    Attention<TLinear> attn;
-    MLP<TGateUp, TLinear> mlp;
+    RMSNorm<TAux> input_norm;
+    RMSNorm<TAux> output_norm;
+    Attention<TMatmul> attn;
+    MLP<TMatmul> mlp;
 
     Layer(int i, std::shared_ptr<Parameters> p) :
                                 i(i),
 
-                                input_norm(p->get_tensor<TLinear>(i, "input_layernorm.weight")),
-                                output_norm(p->get_tensor<TLinear>(i, "post_attention_layernorm.weight")),
+                                input_norm(p->get_tensor<TAux>(i, "input_layernorm.weight")),
+                                output_norm(p->get_tensor<TAux>(i, "post_attention_layernorm.weight")),
 
-                                attn(p->get_tensor<TLinear>(i, "self_attn.q_proj.weight"),
-                                     p->get_tensor<TLinear>(i, "self_attn.k_proj.weight"),
-                                     p->get_tensor<TLinear>(i, "self_attn.v_proj.weight"),
-                                     p->get_tensor<TLinear>(i, "self_attn.o_proj.weight"), i),
+                                attn(p->get_tensor<TMatmul>(i, "self_attn.q_proj.weight"),
+                                     p->get_tensor<TMatmul>(i, "self_attn.k_proj.weight"),
+                                     p->get_tensor<TMatmul>(i, "self_attn.v_proj.weight"),
+                                     p->get_tensor<TMatmul>(i, "self_attn.o_proj.weight"), i),
 
-                                mlp(p->get_tensor<TLinear>(i, "mlp.down_proj.weight"),
-                                    p->get_tensor<TGateUp>(i, "mlp.gate_proj.weight"),
-                                    p->get_tensor<TGateUp>(i, "mlp.up_proj.weight"))
+                                mlp(p->get_tensor<TMatmul>(i, "mlp.down_proj.weight"),
+                                    p->get_tensor<TMatmul>(i, "mlp.gate_proj.weight"),
+                                    p->get_tensor<TMatmul>(i, "mlp.up_proj.weight"))
                                 {}
 
 
@@ -99,25 +99,25 @@ struct Layer {
 
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L414
-template <typename TLinear>
+template <typename TAux>
 struct LMHead {
-    Tensor<TLinear> lm_head;
+    Tensor<TAux> lm_head;
 
-    LMHead(std::shared_ptr<Parameters> params) : lm_head(params->get_tensor<TLinear>(-1, "lm_head.weight")) {}
+    LMHead(std::shared_ptr<Parameters> params) : lm_head(params->get_tensor<TAux>(-1, "lm_head.weight")) {}
 
     void forward(InferenceState& infer);
 };
 
 
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L334
-template <typename TGateUp, typename TLinear>
+template <typename TMatmul, typename TAux>
 struct Model {
-    Embedding<TLinear> embedding;
-    RMSNorm<TLinear> norm;
-    LMHead<TLinear> lmHead;
-    std::vector<Layer<TGateUp, TLinear>> layers;
+    Embedding<TAux> embedding;
+    RMSNorm<TAux> norm;
+    LMHead<TAux> lmHead;
+    std::vector<Layer<TMatmul, TAux>> layers;
 
-    Model(std::shared_ptr<Parameters> params) : embedding(params->get_tensor<TLinear>(-1, "model.embed_tokens.weight")), norm(params->get_tensor<TLinear>(-1, "model.norm.weight")), lmHead(params){
+    Model(std::shared_ptr<Parameters> params) : embedding(params->get_tensor<TAux>(-1, "model.embed_tokens.weight")), norm(params->get_tensor<TAux>(-1, "model.norm.weight")), lmHead(params){
         for (int i=0;i<params->config.n_layers; i++){
             layers.emplace_back(i, params);
         }

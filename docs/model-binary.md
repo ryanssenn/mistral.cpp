@@ -12,9 +12,9 @@ Run from a [qpack](https://github.com/ryanssenn/qpack) checkout.
 
 **Inputs from HF:** `config.json`, `tokenizer.json`, `model.safetensors.index.json` + shard files.
 
-**Output:** `mistral.mog` (~10 GB for Mistral 7B Q8F16).
+**Output:** `mistral.mog` (~7 GB for Mistral 7B Q8F16).
 
-**Q8F16** is the default export format: int8-quantized `mlp.gate_proj`/`mlp.up_proj` (Q8), float16 storage for all other weights (F16). Stored as `quant: "Q8F16"` in the config KV.
+**Q8F16** is the export format: int8-quantized layer matmul weights (MLP gate/up/down and attention q/k/v/o), float16 for norms, embeddings, and lm_head. Stored as `quant: "Q8F16"` in the config KV.
 
 ---
 
@@ -30,7 +30,7 @@ Think of a `.mog` file as three parts stacked back-to-back:
 ├─────────────────────────────────────────┤
 │  Padding (0–63 bytes)                   │  align next section to 64-byte boundary
 ├─────────────────────────────────────────┤
-│  Weight payload (~10 GB)                │  raw tensor bytes; mmap'd, not copied
+│  Weight payload (~7 GB)                 │  raw tensor bytes; mmap'd, not copied
 └─────────────────────────────────────────┘
 ```
 
@@ -96,7 +96,7 @@ repeat count times:
 | `max_position_embeddings` | UINT32 | 32768 |
 | `rope_theta` | FLOAT32 | 10000.0 |
 | `norm_eps` | FLOAT32 | 1e-5 |
-| `quant` | STRING | `"Q8F16"` or `"f32"` |
+| `quant` | STRING | `"Q8F16"` |
 
 `head_dim` is not stored; C++ computes it as `hidden_size / n_heads`.
 
@@ -168,7 +168,12 @@ Weights are promoted to f32 at compute time. See [f16-optimizations.md](f16-opti
 
 ### int8 tensors (Q8F16 export)
 
-Only **`mlp.gate_proj`** and **`mlp.up_proj`** are quantized per layer. Everything else (attention, `down_proj`, embeddings, norms) is stored as **f16**.
+Per layer, these matmul weights are int8:
+
+- `mlp.gate_proj`, `mlp.up_proj`, `mlp.down_proj`
+- `self_attn.q_proj`, `self_attn.k_proj`, `self_attn.v_proj`, `self_attn.o_proj`
+
+Norms, embeddings, and `lm_head` are stored as **f16**.
 
 Quantization is **symmetric per group of 64** weights, mapped to `[-127, 127]`:
 
@@ -182,8 +187,6 @@ Tensor<int8_t>(int8* at offset, scales, shape)
 ```
 
 Matmul dequantizes on the fly using `GROUP_SIZE = 64` in `kernels.cpp`.
-
-Use `--quant f32` at export time for an all-float file.
 
 ---
 
@@ -218,7 +221,7 @@ for each tensor entry:
 
 Tensors live in `global_weights` or `layer_weights[layer]` as `variant<Tensor<float>, Tensor<int8_t>, Tensor<fp16_t>>`.
 
-When `config.quant == "Q8F16"` (legacy files may have `"int8"`), the model uses int8 matmul for gate/up projections; all other linear weights are f16 and promoted to f32 at compute time.
+When `config.quant == "Q8F16"` (legacy files may have `"int8"`), the model uses int8 matmul for all layer matmul weights; norms, embed, and lm_head are f16 and promoted to f32 at compute time.
 
 ---
 
@@ -229,6 +232,6 @@ When `config.quant == "Q8F16"` (legacy files may have `"int8"`), the model uses 
 | Magic | `MOG\0` |
 | Version | `1` |
 | Default export | Q8F16 |
-| Mistral 7B size | ~10 GB |
+| Mistral 7B size | ~7 GB |
 | Header | Small; tokenizer dominates |
 | Weights | mmap'd; offsets in tensor table |

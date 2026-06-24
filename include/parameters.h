@@ -40,7 +40,7 @@ struct Parameters {
     void load_weights(char* p, BinaryReader& reader);
     void load_parameters(const std::string& path);
 
-    bool uses_f16_linear_weights() const;
+    bool uses_f16_aux_weights() const;
 
     template<typename T>
     Tensor<T> get_tensor(int layer, const std::string& name);

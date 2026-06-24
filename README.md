@@ -10,12 +10,11 @@ Load a single `.mog` (Model Object Graph) file and run inference locally. No run
 
 ## Supported models
 
-Benchmarks on M4 MacBook, Q8F16 (~10 GB).
+Benchmarks on M4 MacBook Air
 
-
-| Model                                                                   | tok/s | perplexity |
-| ----------------------------------------------------------------------- | ----- | ---------- |
-| [Mistral-7B-v0.1 Q8F16](https://huggingface.co/QmogAI/Mistral-7B-Q8F16) | 5.73  | 5.24       |
+| Model | CPU tok/s | Metal tok/s |
+| ----- | --------- | ----------- |
+| [Mistral-7B-v0.1 Q8F16](https://huggingface.co/QmogAI/Mistral-7B-Q8F16) | 11.0523 | |
 
 
 ## Run it

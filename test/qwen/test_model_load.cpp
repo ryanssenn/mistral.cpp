@@ -384,8 +384,8 @@ int test_mog_weight_spotcheck() {
     return 0;
 }
 
-static RegisterTest mog_header_f16("mog header", "f16", "model_load", &test_mog_header);
-static RegisterTest mog_config_f16("mog config", "f16", "model_load", &test_mog_config);
-static RegisterTest mog_tokenizer_f16("mog tokenizer metadata", "f16", "model_load", &test_mog_tokenizer_metadata);
-static RegisterTest mog_inventory_f16("mog tensor inventory", "f16", "model_load", &test_mog_tensor_inventory);
-static RegisterTest mog_spotcheck_f16("mog weight spotcheck", "f16", "model_load", &test_mog_weight_spotcheck);
+static RegisterTest mog_header_f16("header", "f16", &test_mog_header);
+static RegisterTest mog_config_f16("config", "f16", &test_mog_config);
+static RegisterTest mog_tokenizer_f16("tokenizer metadata", "f16", &test_mog_tokenizer_metadata);
+static RegisterTest mog_inventory_f16("tensor inventory", "f16", &test_mog_tensor_inventory);
+static RegisterTest mog_spotcheck_f16("weight spotcheck", "f16", &test_mog_weight_spotcheck);

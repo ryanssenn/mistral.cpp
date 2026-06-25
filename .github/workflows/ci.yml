@@ -63,4 +63,4 @@ jobs:
           cmake --build build
 
       - name: Unit tests
-        run: QMOG_TEST_SUITE=model_load ./build/test_exec
+        run: ./build/test_exec

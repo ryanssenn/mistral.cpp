@@ -1,21 +1,16 @@
 # qmog.cpp
 
-**Experimental project under active development**. Current support is limited to the Mistral 7B base model running on a CPU backend. Metal acceleration, additional architectures, and performance improvements are ongoing.
+**Experimental project under active development**.
 
 A compact C++ inference engine optimized for Apple platforms.
 
 Load a single `.mog` (Model Object Graph) file and run inference locally. No runtime dependencies. A small C++ codebase focused on readability and simplicity.
 
-<img width="800" height="245" alt="qmog_demo" src="https://github.com/user-attachments/assets/0d7804dc-bbb6-4970-8a1f-35ab30add8cf" />
-
 ## Supported models
 
-Benchmarks on M4 MacBook Air
-
-| Model | CPU tok/s | Metal tok/s |
-| ----- | --------- | ----------- |
-| [Mistral-7B-v0.1 Q8F16](https://huggingface.co/QmogAI/Mistral-7B-Q8F16) | 11.0523 | |
-
+| Model | Format | Size |
+| ----- | ------ | ---- |
+| [Qwen3-0.6B f16](https://huggingface.co/QmogAI/Qwen3-0.6B.mog) | MOG v2, f16 | ~1.2 GB |
 
 ## Run it
 
@@ -38,13 +33,13 @@ cmake --build build
 3. Pull the `.mog` model:
 
 ```bash
-hf download QmogAI/Mistral-7B-Q8F16 mistral-7B-Q8F16.mog --local-dir .
+hf download QmogAI/Qwen3-0.6B.mog qwen3-0.6B.mog --local-dir .
 ```
 
 4. Run:
 
 ```bash
-./build/qmog-cli mistral-7B-Q8F16.mog "Paris is the capital of" --temp 0.7
+./build/qmog-cli qwen3-0.6B.mog "Hello"
 ```
 
 Use `--temp 0` for greedy decoding.
@@ -53,11 +48,22 @@ To export your own `.mog` from a Hugging Face checkpoint, use [qpack](https://gi
 
 ## Testing
 
-Perplexity is the main correctness check. `./perplexity.sh` runs the engine against a Hugging Face reference on a fixed prompt. Regenerate unit-test goldens with `python scripts/test/mistral/goldens.py`.
+Requires `qwen3-0.6B.mog` in the repo root.
+
+### Perplexity
+
+Perplexity is the main correctness check. `./perplexity.sh` runs the engine against a Hugging Face reference on a fixed prompt. Use `--save` to record the current numbers as the baseline in `perplexity_baseline.json`.
 
 ```bash
 ./perplexity.sh
 ./perplexity.sh --check
-./build/test_exec
+./perplexity.sh --save
 ```
 
+### Unit tests
+
+Runs all tests under `test/qwen/`.
+
+```bash
+./build/test_exec
+```

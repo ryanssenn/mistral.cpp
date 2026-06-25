@@ -56,14 +56,10 @@ int main() {
     load_expected_values();
 
     const std::string quant = get_params()->config.quant;
-    const char* suite_filter = std::getenv("QMOG_TEST_SUITE");
 
     size_t name_w = 0;
     int matching = 0;
     for (const TestCase& t : tests) {
-        if (suite_filter && t.suite != suite_filter) {
-            continue;
-        }
         if (t.quant == quant || t.quant == "any") {
             name_w = std::max(name_w, t.name.size());
             matching++;
@@ -92,9 +88,6 @@ int main() {
     auto suite_start = std::chrono::steady_clock::now();
 
     for (const TestCase& t : tests) {
-        if (suite_filter && t.suite != suite_filter) {
-            continue;
-        }
         if (t.quant != quant && t.quant != "any") {
             continue;
         }

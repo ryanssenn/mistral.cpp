@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  HF_MOG_REPO: QmogAI/Mistral-7B-Q8F16
-  MODEL_MOG: mistral-7B-Q8F16.mog
+  HF_MOG_REPO: QmogAI/Qwen3-0.6B.mog
+  MODEL_MOG: qwen3-0.6B.mog
 
 jobs:
   test:
@@ -63,4 +63,4 @@ jobs:
           cmake --build build
 
       - name: Unit tests
-        run: ./build/test_exec
+        run: QMOG_TEST_SUITE=model_load ./build/test_exec

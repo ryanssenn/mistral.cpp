@@ -8,6 +8,7 @@
 #include <variant>
 
 struct Config {
+    std::string architecture;
     size_t hidden_size;
     size_t intermediate_size;
     size_t n_layers;
@@ -20,6 +21,9 @@ struct Config {
     float rope_theta;
     float norm_eps;
     std::string quant;
+    bool tie_word_embeddings = false;
+    uint32_t bos_token_id = 0;
+    uint32_t eos_token_id = 0;
 };
 
 class BinaryReader;
@@ -27,6 +31,7 @@ class BinaryReader;
 using WeightTensor = std::variant<Tensor<float>, Tensor<int8_t>, Tensor<fp16_t>>;
 
 struct Parameters {
+    uint32_t format_version = model_format::FORMAT_VERSION;
     Config config;
     Tokenizer tokenizer;
 
@@ -48,4 +53,8 @@ struct Parameters {
 
 inline bool is_q8f16(const std::string& quant) {
     return quant == "Q8F16" || quant == "int8";  // "int8" = legacy .mog files
+}
+
+inline bool is_f16(const std::string& quant) {
+    return quant == "f16";
 }

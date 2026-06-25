@@ -35,7 +35,7 @@ std::vector<uint32_t> Tokenizer::get_id(const std::string& token) const{
 }
 
 
-void Tokenizer::load(BinaryReader& reader){
+void Tokenizer::load(BinaryReader& reader, uint32_t format_version){
     uint32_t vocab_count = reader.read_u32();
     uint32_t max_id = 0;
 
@@ -72,6 +72,10 @@ void Tokenizer::load(BinaryReader& reader){
 
         merge_to_rank[packed] = i;
         merge_to_id[packed] = token_to_id[token1 + token2];
+    }
+
+    if (format_version >= model_format::FORMAT_VERSION_V2) {
+        pre_tokenize_regex = reader.read_string();
     }
 }
 

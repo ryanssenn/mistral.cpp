@@ -45,6 +45,8 @@ void Parameters::load_config(BinaryReader& reader){
             config.n_heads = reader.read_u32();
         } else if (key == "n_kv_heads" && type == static_cast<uint8_t>(model_format::KVType::UINT32)){
             config.n_kv_heads = reader.read_u32();
+        } else if (key == "head_dim" && type == static_cast<uint8_t>(model_format::KVType::UINT32)){
+            config.head_dim = reader.read_u32();
         } else if (key == "vocab_size" && type == static_cast<uint8_t>(model_format::KVType::UINT32)){
             config.vocab_size = reader.read_u32();
         } else if (key == "sliding_window" && type == static_cast<uint8_t>(model_format::KVType::UINT32)){
@@ -57,6 +59,12 @@ void Parameters::load_config(BinaryReader& reader){
             config.norm_eps = reader.read_f32();
         } else if (key == "quant" && type == static_cast<uint8_t>(model_format::KVType::STRING)){
             config.quant = reader.read_string();
+        } else if (key == "tie_word_embeddings" && type == static_cast<uint8_t>(model_format::KVType::UINT32)){
+            config.tie_word_embeddings = reader.read_u32() != 0;
+        } else if (key == "bos_token_id" && type == static_cast<uint8_t>(model_format::KVType::UINT32)){
+            config.bos_token_id = reader.read_u32();
+        } else if (key == "eos_token_id" && type == static_cast<uint8_t>(model_format::KVType::UINT32)){
+            config.eos_token_id = reader.read_u32();
         } else {
             if (type == static_cast<uint8_t>(model_format::KVType::STRING)){
                 reader.read_string();
@@ -68,7 +76,9 @@ void Parameters::load_config(BinaryReader& reader){
         }
     }
 
-    config.head_dim = config.hidden_size / config.n_heads;
+    if (config.head_dim == 0) {
+        config.head_dim = config.hidden_size / config.n_heads;
+    }
 }
 
 void Parameters::load_tensor(std::unordered_map<std::string, WeightTensor>& m, char* p, const std::string& key, uint8_t dtype, const std::vector<size_t>& shape, uint64_t offset, uint64_t scale_offset, uint32_t scale_size){
@@ -154,10 +164,11 @@ void Parameters::load_parameters(const std::string& path){
 
     uint32_t version;
     std::memcpy(&version, base + 4, sizeof(version));
-    if (version != model_format::FORMAT_VERSION){
+    if (version < model_format::FORMAT_VERSION || version > model_format::MAX_FORMAT_VERSION){
         std::cerr << "unknown format version: " << version << std::endl;
         std::exit(1);
     }
+    format_version = version;
 
     uint64_t header_size;
     std::memcpy(&header_size, base + 8, sizeof(header_size));
@@ -170,9 +181,9 @@ void Parameters::load_parameters(const std::string& path){
     }
 
     BinaryReader reader(base + header_start, header_size);
-    reader.read_string(); // architecture (e.g. "mistral")
+    config.architecture = reader.read_string();
     load_config(reader);
-    tokenizer.load(reader);
+    tokenizer.load(reader, format_version);
 
     size_t payload_base = (header_end + 63) & ~size_t(63);
     if (payload_base > file_size){

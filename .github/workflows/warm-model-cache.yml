@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  HF_MOG_REPO: QmogAI/Mistral-7B-Q8F16
-  MODEL_MOG: mistral-7B-Q8F16.mog
+  HF_MOG_REPO: QmogAI/Qwen3-0.6B.mog
+  MODEL_MOG: qwen3-0.6B.mog
 
 jobs:
   warm:

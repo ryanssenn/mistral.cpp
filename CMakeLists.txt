@@ -20,16 +20,16 @@ else()
 endif()
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS "src/*.cpp")
-file(GLOB_RECURSE TEST_MISTRAL CONFIGURE_DEPENDS "test/mistral/*.cpp")
+file(GLOB_RECURSE TEST_QWEN CONFIGURE_DEPENDS "test/qwen/*.cpp")
 list(REMOVE_ITEM SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 
 add_executable(qmog-cli src/main.cpp ${SRC})
-add_executable(test_exec ${SRC} ${TEST_MISTRAL})
+add_executable(test_exec ${SRC} ${TEST_QWEN})
 
 target_include_directories(qmog-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(test_exec PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/mistral
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/qwen
 )
 
 if(NOT APPLE)

@@ -1,6 +1,7 @@
 #pragma once
 #include "tensor.h"
 #include "binary_reader.h"
+#include "model_format.h"
 #include <unordered_map>
 
 struct Tokenizer {
@@ -16,6 +17,7 @@ struct Tokenizer {
 
     // Maps a packed (left,right) token pair to its merged token ID to avoid recomputing merges during encoding
     std::unordered_map<uint64_t, uint32_t> merge_to_id;
+    std::string pre_tokenize_regex;
 
     std::vector<uint32_t> get_id(const std::string& token) const;
 
@@ -23,7 +25,7 @@ struct Tokenizer {
     uint64_t get_lowest_pair(std::vector<uint32_t>& tokens) const;
     std::vector<uint32_t> merge(std::vector<uint32_t>& tokens, uint32_t left, uint32_t right, uint32_t merged) const;
 
-    void load(BinaryReader& reader);
+    void load(BinaryReader& reader, uint32_t format_version = model_format::FORMAT_VERSION);
 
     std::string pre_tokenize_mistral(const std::string& text) const;
     std::vector<uint32_t> encode(const std::string& text) const;

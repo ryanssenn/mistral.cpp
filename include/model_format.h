@@ -6,6 +6,8 @@ namespace model_format {
 
 constexpr char MAGIC[4] = {'M', 'O', 'G', '\0'};
 constexpr uint32_t FORMAT_VERSION = 1;
+constexpr uint32_t FORMAT_VERSION_V2 = 2;
+constexpr uint32_t MAX_FORMAT_VERSION = FORMAT_VERSION_V2;
 
 enum class DType : uint8_t {
     F32 = 0,

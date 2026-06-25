@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 #
-# Download the pre-exported Q8F16 .mog model from Hugging Face for CI.
+# Download the pre-exported .mog model from Hugging Face for CI.
 #
 # Usage: ./scripts/ci/prepare_model.sh
 #
 # Env overrides:
-#   MODEL_MOG     local output path (default: ./mistral-7B-Q8F16.mog)
-#   HF_MOG_REPO   Hugging Face repo id (default: QmogAI/Mistral-7B-Q8F16)
-#   HF_MOG_FILE   filename within the repo (default: mistral-7B-Q8F16.mog)
+#   MODEL_MOG     local output path (default: ./qwen3-0.6B.mog)
+#   HF_MOG_REPO   Hugging Face repo id (default: QmogAI/Qwen3-0.6B.mog)
+#   HF_MOG_FILE   filename within the repo (default: qwen3-0.6B.mog)
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-MODEL="${MODEL_MOG:-./mistral-7B-Q8F16.mog}"
-HF_REPO="${HF_MOG_REPO:-QmogAI/Mistral-7B-Q8F16}"
-HF_FILE="${HF_MOG_FILE:-mistral-7B-Q8F16.mog}"
+MODEL="${MODEL_MOG:-./qwen3-0.6B.mog}"
+HF_REPO="${HF_MOG_REPO:-QmogAI/Qwen3-0.6B.mog}"
+HF_FILE="${HF_MOG_FILE:-qwen3-0.6B.mog}"
 
 if [ -f "$MODEL" ]; then
     echo "Model already present: $MODEL ($(du -h "$MODEL" | cut -f1))"

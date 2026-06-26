@@ -1,7 +1,7 @@
 #include <iostream>
-#include "parameters.h"
-#include "modules.h"
-#include "fp16.h"
+#include "common/fp16.h"
+#include "loader/parameters.h"
+#include "model/modules.h"
 #include <random>
 #include <chrono>
 #include <cmath>

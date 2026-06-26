@@ -54,8 +54,8 @@ jobs:
           fi
           echo "Using model ($(du -h "${{ env.MODEL_MOG }}" | cut -f1))"
 
-      - name: Install OpenMP
-        run: brew install libomp
+      - name: Install build dependencies
+        run: brew install libomp pkg-config
 
       - name: Build
         run: |

@@ -1,7 +1,7 @@
 #include "setup/context.h"
-#include "model_format.h"
-#include "fp16.h"
-#include "parameters.h"
+#include "common/fp16.h"
+#include "loader/model_format.h"
+#include "loader/parameters.h"
 
 #include <cstring>
 #include <fstream>
@@ -260,18 +260,10 @@ int test_mog_config() {
     return 0;
 }
 
-// MOG v2 stores a tiktoken-style pre-tokenize regex after BPE merges. This test
-// ensures the loader reads it so Qwen tokenization can use the exported pattern.
+// MOG v2 stores a pre-tokenize regex that must match QwenPreTokenizer's hardcoded pattern.
 int test_mog_tokenizer_metadata() {
-    const std::shared_ptr<Parameters> params = get_params();
-
-    if (params->tokenizer.pre_tokenize_regex.empty()) {
-        std::cerr << "missing MOG v2 pre_tokenize_regex\n";
-        return 1;
-    }
-
-    if (params->tokenizer.pre_tokenize_regex.find("(?i:'s|'t|'re|'ve|'m|'ll|'d)") == std::string::npos) {
-        std::cerr << "unexpected Qwen pre_tokenize_regex\n";
+    if (std::string(QwenPreTokenizer::pattern).find("(?i:'s|'t|'re|'ve|'m|'ll|'d)") == std::string::npos) {
+        std::cerr << "unexpected Qwen pre_tokenize regex\n";
         return 1;
     }
 

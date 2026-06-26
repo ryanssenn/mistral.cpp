@@ -4,17 +4,19 @@
 
 A compact C++ inference engine optimized for Apple platforms.
 
-Load a single `.mog` (Model Object Graph) file and run inference locally. No runtime dependencies. A small C++ codebase focused on readability and simplicity.
+Load a single model binary and run inference locally. No runtime dependencies. A small C++ codebase focused on readability and simplicity.
+
+`.mog` is qmog's model format containing everything needed for inference. Pre-built `.mog` files are available, or you can generate your own from a Hugging Face Qwen3 checkpoint using [qpack](https://github.com/ryanssenn/qpack).
 
 ## Supported models
 
-| Model | Format | Size |
-| ----- | ------ | ---- |
-| [Qwen3-0.6B f16](https://huggingface.co/QmogAI/Qwen3-0.6B.mog) | MOG v2, f16 | ~1.2 GB |
+| Model | Size |
+| ----- | ---- |
+| [Qwen3-0.6B f16](https://huggingface.co/QmogAI/Qwen3-0.6B.mog) | ~1.2 GB |
 
 ## Run it
 
-Only available on MacOS.
+Only available on macOS.
 
 1. Clone this repo:
 
@@ -30,7 +32,9 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-3. Pull the `.mog` model:
+3. Download the model.
+
+Requires the Hugging Face CLI (`pip install "huggingface_hub[cli]"`).
 
 ```bash
 hf download QmogAI/Qwen3-0.6B.mog qwen3-0.6B.mog --local-dir .
@@ -52,7 +56,7 @@ Requires `qwen3-0.6B.mog` in the repo root.
 
 ### Perplexity
 
-Perplexity is the main correctness check. `./perplexity.sh` runs the engine against a Hugging Face reference on a fixed prompt. Use `--save` to record the current numbers as the baseline in `perplexity_baseline.json`.
+Perplexity is the main correctness check. It compares qmog against a Hugging Face reference implementation on a fixed prompt to verify the engine produces the same probabilities. Use `--save` to record the current results as the baseline in `perplexity_baseline.json`.
 
 ```bash
 ./perplexity.sh

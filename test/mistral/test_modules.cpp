@@ -1,5 +1,5 @@
 #include "setup/context.h"
-#include "fp16.h"
+#include "common/fp16.h"
 
 template <typename TMatmul, typename TAux>
 int test_layer() {

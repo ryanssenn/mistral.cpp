@@ -1,8 +1,8 @@
 #include <string>
 #include <iostream>
-#include "parameters.h"
-#include "kernels.h"
-#include "modules.h"
+#include "backend/kernels.h"
+#include "loader/parameters.h"
+#include "model/modules.h"
 
 struct TestCase {
     std::string name;

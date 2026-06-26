@@ -1,7 +1,7 @@
 #pragma once
 
-#include "tensor.h"
-#include "fp16.h"
+#include "common/fp16.h"
+#include "common/tensor.h"
 #include <cmath>
 
 template <typename WeightT, typename ActivationT, typename AccumT>

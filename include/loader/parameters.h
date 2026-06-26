@@ -2,9 +2,9 @@
 
 #include <unordered_map>
 #include <string>
-#include "tensor.h"
-#include "fp16.h"
-#include "tokenizer.h"
+#include "common/fp16.h"
+#include "common/tensor.h"
+#include "tokenizer/qwen_tokenizer.h"
 #include <variant>
 
 struct Config {
@@ -33,7 +33,7 @@ using WeightTensor = std::variant<Tensor<float>, Tensor<int8_t>, Tensor<fp16_t>>
 struct Parameters {
     uint32_t format_version = model_format::FORMAT_VERSION;
     Config config;
-    Tokenizer tokenizer;
+    QwenTokenizer tokenizer;
 
     std::unordered_map<std::string, WeightTensor> global_weights;
     std::vector<std::unordered_map<std::string, WeightTensor>> layer_weights;

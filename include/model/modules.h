@@ -1,6 +1,6 @@
-#include "kernels.h"
-#include "parameters.h"
-#include "inference_state.h"
+#include "backend/kernels.h"
+#include "loader/parameters.h"
+#include "model/inference_state.h"
 
 
 // https://docs.pytorch.org/docs/stable/generated/torch.nn.Embedding.html

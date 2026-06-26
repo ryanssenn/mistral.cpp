@@ -1,7 +1,7 @@
 #include "setup/context.h"
-#include "model_format.h"
-#include "fp16.h"
-#include "parameters.h"
+#include "common/fp16.h"
+#include "loader/model_format.h"
+#include "loader/parameters.h"
 
 #include <cstring>
 #include <fstream>

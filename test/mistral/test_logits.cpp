@@ -1,6 +1,6 @@
 #include "setup/context.h"
-#include "fp16.h"
-#include "parameters.h"
+#include "common/fp16.h"
+#include "loader/parameters.h"
 #include <unordered_map>
 
 static constexpr size_t LOGITS_TOPK = 10;

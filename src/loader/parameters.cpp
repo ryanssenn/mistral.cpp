@@ -1,6 +1,6 @@
-#include "parameters.h"
-#include "model_format.h"
-#include "binary_reader.h"
+#include "loader/binary_reader.h"
+#include "loader/model_format.h"
+#include "loader/parameters.h"
 #include <iostream>
 #include <cstring>
 

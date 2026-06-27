@@ -1,0 +1,40 @@
+---
+description: General project rules
+globs:
+alwaysApply: true
+---
+
+# qmog.cpp
+
+## Philosophy
+
+- Think from first principles.
+- Prefer the simplest correct solution.
+- Every line of code should justify its existence.
+- Favor deletion over addition when both solve the problem.
+- Reduce complexity whenever you touch code.
+- Simplify before optimizing.
+
+## Code
+
+- Make the smallest change that fully solves the problem.
+- Do not introduce new dependencies without asking first.
+- Do not refactor unrelated code.
+- Preserve existing behavior unless explicitly requested.
+- Prefer the C++ standard library over third party libraries.
+- Avoid unnecessary abstractions, wrappers, helper functions, and configuration.
+- Optimize only after correctness and clarity.
+
+## Git
+
+- Start every feature, fix, or experiment from a branch off `main`.
+
+## Responses
+
+- Be concise.
+- Answer only what was asked.
+- Explain complex topics from first principles, one step at a time.
+- Use plain, direct language.
+- Do not use analogies.
+- Only provide code when requested.
+- When writing code, prefer the smallest complete solution.

@@ -1,9 +1,8 @@
 #include <string>
 #include <iostream>
-#include <unordered_map>
 #include <vector>
 
-#include "common/arena.h"
+#include "common/dtype.h"
 #include "common/tensor.h"
 #include "loader/model_load.h"
 
@@ -22,19 +21,10 @@ struct RegisterTest {
 };
 
 std::shared_ptr<ModelLoad> get_model();
-inline Arena arena(4*1024*1024); // 4 MB
 
-inline std::unordered_map<std::string, Tensor> expected;
-void load_expected_values();
+inline Tensor golden_tensor(const float* data, size_t n) {
+    return Tensor::from_ptr(const_cast<float*>(data), DType::F32, {n});
+}
 
-struct TopK {
-    std::vector<uint32_t> ids;
-    std::vector<float> vals;
-};
-
-TopK get_topk(const Tensor& logits, size_t k);
-bool has_logits_golden();
-
-bool equals(float x, float y);
-bool equals(const Tensor& x, const Tensor& y);
 bool equals(const Tensor& x, const Tensor& y, float atol);
+bool expect_tensor(const Tensor& got, const float* golden, size_t n, float atol, const char* name);

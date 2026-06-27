@@ -59,6 +59,8 @@ add_executable(test_exec
     ${QMOG_COMMON_SRC}
     ${QMOG_LOADER_SRC}
     ${QMOG_TOKENIZER_SRC}
+    ${QMOG_MODEL_SRC}
+    ${QMOG_BACKEND_SRC}
     ${TEST_QWEN_SRC}
 )
 

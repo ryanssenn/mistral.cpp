@@ -1,4 +1,6 @@
 #include "model/model.h"
+
+#include <cassert>
 #include <iostream>
 
 void Embedding::forward(InferenceState& infer, size_t token_id){
@@ -8,9 +10,7 @@ void Embedding::forward(InferenceState& infer, size_t token_id){
     }
 }
 
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L319
-// The forward pass generates cos/sin position encodings for RoPE.
-// Take the inv_freq at each position, multiply them by position and apply cos/sin
+// https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py#L106
 void RotaryEmbedding::forward(InferenceState& infer){
     for (size_t i=0; i<infer.cos.numel; i++){
         infer.cos.f32()[i] = std::cos(infer.inv_freq.f32()[i % infer.inv_freq.numel] * infer.pos);
@@ -18,29 +18,33 @@ void RotaryEmbedding::forward(InferenceState& infer){
     }
 }
 
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L195
-// x*g / sqrt(sum(x^2) + e)
-void RMSNorm::forward(InferenceState& infer) {
-    float squares = 0;
+// https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py#L58
+void RMSNorm::forward(Tensor& x) {
+    const size_t cols = x.shape[x.ndim - 1];
+    assert(cols == g.numel);
 
-    for(int i =0; i<infer.hidden_state.numel; i++){
-        float v = infer.hidden_state.f32()[i];
-        squares += v * v;
-    }
+    float* data = x.f32();
+    for (size_t s = 0; s < x.numel / cols; s++) {
+        float* slice = data + s * cols;
 
-    float rms = sqrt(squares/infer.hidden_state.shape[0] + e);
+        float squares = 0;
+        for (size_t i = 0; i < cols; i++) {
+            squares += slice[i] * slice[i];
+        }
 
-    mul(infer.hidden_state, infer.hidden_state, 1/rms);
-
-    for (int i=0; i<infer.hidden_state.numel; i++){
-        infer.hidden_state.f32()[i] = infer.hidden_state.f32()[i] * g.get(i);
+        const float scale = 1.0f / sqrt(squares / cols + e);
+        for (size_t i = 0; i < cols; i++) {
+            slice[i] *= scale * g.get(i);
+        }
     }
 }
 
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L140
+// https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py#L222
 void Attention::forward(InferenceState &infer) {
     matmul(infer.q_state, q_proj, infer.hidden_state);
     matmul(infer.k_state, k_proj, infer.hidden_state);
+    q_norm.forward(infer.q_state);
+    k_norm.forward(infer.k_state);
     matmul(infer.v_state, v_proj, infer.hidden_state);
 
     RotaryEmbedding::forward(infer);
@@ -68,6 +72,7 @@ void Attention::forward(InferenceState &infer) {
     matmul(infer.hidden_state, o_proj, infer.context);
 }
 
+// https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py#L222
 void MLP::forward(InferenceState &infer) {
     matmul(infer.mlp_gate, gate_proj, infer.hidden_state);
 
@@ -80,10 +85,11 @@ void MLP::forward(InferenceState &infer) {
     matmul(infer.hidden_state, down_proj, infer.mlp_gate);
 }
 
+// https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py#L222
 void Layer::forward(InferenceState &infer){
     infer.residual.copy_from(infer.hidden_state);
 
-    input_norm.forward(infer);
+    input_norm.forward(infer.hidden_state);
 
     attn.forward(infer);
 
@@ -91,17 +97,19 @@ void Layer::forward(InferenceState &infer){
 
     infer.residual.copy_from(infer.hidden_state);
 
-    output_norm.forward(infer);
+    output_norm.forward(infer.hidden_state);
 
     mlp.forward(infer);
 
     add(infer.hidden_state, infer.hidden_state, infer.residual);
 }
 
+// https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py#L222
 void LMHead::forward(InferenceState &infer) {
     matmul(infer.logits, lm_head, infer.hidden_state);
 }
 
+// https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py#L222
 void Model::forward(InferenceState &infer, size_t token_id) {
     embedding.forward(infer, token_id);
 
@@ -109,7 +117,7 @@ void Model::forward(InferenceState &infer, size_t token_id) {
         layer.forward(infer);
     }
 
-    norm.forward(infer);
+    norm.forward(infer.hidden_state);
 
     lmHead.forward(infer);
 

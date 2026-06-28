@@ -13,7 +13,7 @@ struct Range {
     uint32_t end;
 };
 
-#include "unicode_ranges.inc"
+#include "unicode_ranges.inl"
 
 bool in_ranges(uint32_t cp, const Range* ranges, size_t count) {
     size_t lo = 0;

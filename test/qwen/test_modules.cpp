@@ -2,8 +2,8 @@
 #include "model/model.h"
 #include "model/inference_state.h"
 
-#include "goldens/L0.inc"
-#include "goldens/stack.inc"
+#include "goldens/L0.inl"
+#include "goldens/stack.inl"
 
 #include <cassert>
 #include <cstring>
@@ -62,7 +62,7 @@ int test_module_rmsnorm_input() {
     InferenceState infer = make_state();
     copy_golden(infer.hidden_state, kRmsnormL0InputIn, kRmsnormL0InputInSize);
 
-    model.layers[kLayer].input_norm.forward(infer);
+    model.layers[kLayer].input_norm.forward(infer.hidden_state);
 
     if (!expect_tensor(infer.hidden_state, kRmsnormL0InputOut, kRmsnormL0InputOutSize, kAtol, "rmsnorm input")) {
         return 1;
@@ -76,7 +76,7 @@ int test_module_rmsnorm_post() {
     InferenceState infer = make_state();
     copy_golden(infer.hidden_state, kRmsnormL0PostIn, kRmsnormL0PostInSize);
 
-    model.layers[kLayer].output_norm.forward(infer);
+    model.layers[kLayer].output_norm.forward(infer.hidden_state);
 
     if (!expect_tensor(infer.hidden_state, kRmsnormL0PostOut, kRmsnormL0PostOutSize, kAtol, "rmsnorm post")) {
         return 1;

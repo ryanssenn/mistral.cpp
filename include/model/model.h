@@ -23,15 +23,17 @@ struct RMSNorm {
     float e = 1e-5f;
 
     RMSNorm(const Tensor& g) : g(g) {}
-    void forward(InferenceState& infer);
+    void forward(Tensor& x);
 };
 
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/modeling_mistral.py#L123
+// https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py#L214
 struct Attention {
     Tensor q_proj;
     Tensor k_proj;
     Tensor v_proj;
     Tensor o_proj;
+    RMSNorm q_norm;
+    RMSNorm k_norm;
 
     size_t layer;
 
@@ -39,11 +41,15 @@ struct Attention {
               const Tensor& k_proj,
               const Tensor& v_proj,
               const Tensor& o_proj,
+              const Tensor& q_norm_weight,
+              const Tensor& k_norm_weight,
               size_t layer)
             : q_proj(q_proj),
               k_proj(k_proj),
               v_proj(v_proj),
               o_proj(o_proj),
+              q_norm(q_norm_weight),
+              k_norm(k_norm_weight),
               layer(layer){}
 
     void forward(InferenceState& infer);
@@ -80,7 +86,10 @@ struct Layer {
                                 attn(p->get_tensor(i, "self_attn.q_proj.weight"),
                                      p->get_tensor(i, "self_attn.k_proj.weight"),
                                      p->get_tensor(i, "self_attn.v_proj.weight"),
-                                     p->get_tensor(i, "self_attn.o_proj.weight"), i),
+                                     p->get_tensor(i, "self_attn.o_proj.weight"),
+                                     p->get_tensor(i, "self_attn.q_norm.weight"),
+                                     p->get_tensor(i, "self_attn.k_norm.weight"),
+                                     i),
 
                                 mlp(p->get_tensor(i, "mlp.down_proj.weight"),
                                     p->get_tensor(i, "mlp.gate_proj.weight"),
